@@ -24,7 +24,8 @@ data class FileChange(
     val afterContent: String? = null,
     val diff: String = "",
     val changeType: FileChangeType,
-    val trashPath: String? = null
+    val trashPath: String? = null,
+    val createParents: Boolean = true
 )
 
 @Serializable
@@ -63,16 +64,9 @@ class ChangeSetManager(
     private val store: ChangeSetStore,
     private val diffEngine: DiffEngine = DiffEngine()
 ) {
-    suspend fun propose(
-        files: List<FileChange>,
-        originatingToolCallId: String? = null
-    ): ChangeSet {
+    suspend fun propose(files: List<FileChange>, originatingToolCallId: String? = null): ChangeSet {
         require(files.isNotEmpty()) { "ChangeSet must contain at least one change" }
-        val changeSet = ChangeSet(
-            workspaceId = workspaceId,
-            files = files,
-            originatingToolCallId = originatingToolCallId
-        )
+        val changeSet = ChangeSet(workspaceId = workspaceId, files = files, originatingToolCallId = originatingToolCallId)
         store.save(changeSet)
         return changeSet
     }
@@ -86,16 +80,13 @@ class ChangeSetManager(
             var applied = current
             current.files.forEachIndexed { index, change ->
                 val appliedChange = applyChange(current.id, change)
-                if (appliedChange !== change) {
-                    applied = applied.copy(files = applied.files.toMutableList().also { it[index] = appliedChange })
-                }
+                if (appliedChange !== change) applied = applied.copy(files = applied.files.toMutableList().also { it[index] = appliedChange })
             }
             applied = applied.copy(status = ChangeSetStatus.APPLIED, appliedAt = System.currentTimeMillis())
             store.save(applied)
             applied
         } catch (conflict: ToolRegistryException) {
-            val marked = current.copy(status = ChangeSetStatus.CONFLICTED)
-            store.save(marked)
+            store.save(current.copy(status = ChangeSetStatus.CONFLICTED))
             throw conflict
         }
     }
@@ -132,8 +123,7 @@ class ChangeSetManager(
             store.save(reverted)
             reverted
         } catch (conflict: ToolRegistryException) {
-            val marked = current.copy(status = ChangeSetStatus.CONFLICTED)
-            store.save(marked)
+            store.save(current.copy(status = ChangeSetStatus.CONFLICTED))
             throw conflict
         }
     }
@@ -148,7 +138,7 @@ class ChangeSetManager(
     private fun applyChange(changeSetId: String, change: FileChange): FileChange = when (change.changeType) {
         FileChangeType.CREATE -> {
             if (fileSystem.exists(change.path)) conflict("Cannot create ${change.path}: path now exists")
-            fileSystem.writeText(change.path, change.afterContent.orEmpty(), createParents = true, overwrite = false)
+            fileSystem.writeText(change.path, change.afterContent.orEmpty(), createParents = change.createParents, overwrite = false)
             change
         }
         FileChangeType.MODIFY -> {
@@ -170,7 +160,7 @@ class ChangeSetManager(
         }
         FileChangeType.CREATE_DIRECTORY -> {
             if (fileSystem.exists(change.path)) conflict("Cannot create directory ${change.path}: path now exists")
-            fileSystem.createDirectory(change.path, createParents = true)
+            fileSystem.createDirectory(change.path, createParents = change.createParents)
             change
         }
     }
