@@ -3,7 +3,9 @@ package com.agentdroid.ui
 import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.spacedBy
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Folder
@@ -15,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
@@ -80,11 +83,11 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
             composable("permissions") { PermissionRulesScreen(nav, factory) }
             composable("classic") { AgentDroidRoot() }
             composable("more") {
-                androidx.compose.foundation.layout.Column(Modifier.padding(20.dp)) {
+                Column(Modifier.padding(20.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
                     Text("AgentDroid", style = MaterialTheme.typography.headlineSmall)
-                    ListItem(headlineContent = { Text("Agent permissions & audit") }, leadingContent = { Icon(Icons.Default.Security, null) }, modifier = Modifier.then(androidx.compose.ui.Modifier))
+                    ListItem(headlineContent = { Text("Agent permissions & audit") }, leadingContent = { Icon(Icons.Default.Security, null) })
                     Button({ nav.navigate("permissions") }) { Text("Manage permissions") }
-                    Button({ nav.navigate("classic") }) { Text("Providers, Memory, Skills & Settings") }
+                    OutlinedButton({ nav.navigate("classic") }) { Text("Providers, Memory, Skills & Settings") }
                 }
             }
         }
