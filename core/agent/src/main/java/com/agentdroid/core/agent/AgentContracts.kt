@@ -3,15 +3,12 @@ package com.agentdroid.core.agent
 import com.agentdroid.core.model.Usage
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.ConcurrentHashMap
 
@@ -114,7 +111,8 @@ data class ToolContext(
     val conversationId: String,
     val sessionId: String,
     val mode: AgentMode,
-    val attributes: Map<String, String> = emptyMap()
+    val attributes: Map<String, String> = emptyMap(),
+    val toolCallId: String? = null
 )
 
 interface AgentTool {
@@ -147,7 +145,7 @@ class ToolRegistry(tools: Iterable<AgentTool> = emptyList()) {
         val tool = entries[call.name] ?: return Result.failure(ToolRegistryException(AgentError.toolNotFound(call.name)))
         validateMode(tool.definition, context.mode)?.let { return Result.failure(ToolRegistryException(it)) }
         validate(tool.definition.inputSchema, call.input)?.let { return Result.failure(ToolRegistryException(it)) }
-        return runCatching { tool.preview(call.input, context) }
+        return runCatching { tool.preview(call.input, context.copy(toolCallId = call.id)) }
     }
 
     suspend fun execute(call: ToolCall, context: ToolContext): ToolResult {
@@ -155,7 +153,7 @@ class ToolRegistry(tools: Iterable<AgentTool> = emptyList()) {
         validateMode(tool.definition, context.mode)?.let { return ToolResult.failure(it) }
         validate(tool.definition.inputSchema, call.input)?.let { return ToolResult.failure(it) }
         return try {
-            tool.execute(call.input, context)
+            tool.execute(call.input, context.copy(toolCallId = call.id))
         } catch (failure: ToolRegistryException) {
             ToolResult.failure(failure.agentError)
         } catch (failure: Throwable) {
