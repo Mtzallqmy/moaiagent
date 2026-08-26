@@ -1,0 +1,2 @@
+-keep class kotlinx.serialization.** { *; }
+-keep class com.agentdroid.** { *; }
