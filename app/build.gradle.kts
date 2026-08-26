@@ -7,10 +7,13 @@ android { namespace = "com.agentdroid"; compileSdk = 35
     buildTypes { debug { applicationIdSuffix = ".debug" }; release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") } }
     buildFeatures { compose = true; buildConfig = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    testOptions { unitTests.isIncludeAndroidResources = true }
 }
 
 dependencies {
     implementation(project(":core:model")); implementation(project(":core:ai")); implementation(project(":data:database"))
     implementation(platform(libs.androidx.compose.bom)); implementation(libs.androidx.compose.ui); implementation(libs.androidx.compose.ui.tooling.preview); debugImplementation(libs.androidx.compose.ui.tooling); implementation(libs.androidx.compose.material3); implementation(libs.androidx.compose.icons)
-    implementation(libs.androidx.activity.compose); implementation(libs.androidx.core.ktx); implementation(libs.androidx.lifecycle.runtime); implementation(libs.androidx.lifecycle.viewmodel); implementation(libs.androidx.navigation.compose); implementation(libs.appcompat); implementation(libs.material); implementation(libs.androidx.room.runtime); implementation(libs.androidx.room.ktx); implementation(libs.kotlinx.coroutines); implementation(libs.serialization.json)
+    implementation(libs.androidx.activity.compose); implementation(libs.androidx.core.ktx); implementation(libs.androidx.lifecycle.runtime); implementation(libs.androidx.lifecycle.viewmodel); implementation(libs.androidx.navigation.compose); implementation(libs.appcompat); implementation(libs.material); implementation(libs.androidx.room.runtime); implementation(libs.androidx.room.ktx); implementation(libs.dataStore.preferences); implementation(libs.commonmark); implementation(libs.commonmark.tables); implementation(libs.kotlinx.coroutines); implementation(libs.serialization.json)
+    testImplementation(libs.mockwebserver); testImplementation("junit:junit:4.13.2")
+    androidTestImplementation(libs.androidx.test.core); androidTestImplementation(libs.espresso.core); androidTestImplementation(platform(libs.androidx.compose.bom)); androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

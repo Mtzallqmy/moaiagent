@@ -1,57 +1,64 @@
-# AgentDroid — تقرير تنفيذ المرحلة الأولى
+# AgentDroid — تقرير تشديد بنية المرحلة الأولى
 
-## Implemented
+## نطاق التنفيذ
 
-تم إنشاء مشروع Android أصلي باستخدام Kotlin وJetpack Compose وMaterial 3، مع تقسيم متعدد الوحدات إلى `app` و`core:model` و`core:ai` و`data:database`. يتضمن المشروع شاشة Home، والتنقل السفلي، وشاشة Chat، وشاشات Providers وModels وConversations وWorkspaces وMemory وSkills وSettings، مع موارد عربية وإنجليزية ودعم `supportsRtl`.
+نُفذت تعديلات البرومبت على بنية مشروع Android الحالية مع الالتزام بطلب تأجيل تحويل المشروع إلى APK. لذلك لم يتم تشغيل `assembleDebug` أو `assembleRelease` في هذه الدورة، ولم تُستبدل أولوية البنية باختبار artifact نهائي.
 
-تم تنفيذ نماذج المحادثات والرسائل ومزودي الإعدادات ومساحات العمل والذاكرة والمهارات باستخدام Room. كما تم تنفيذ `AiProvider` و`ProviderRegistry` وأحداث البث `Started` و`TextDelta` و`ReasoningDelta` وأحداث الأدوات والاستخدام والإكمال والخطأ، إضافة إلى تكاملات HTTP لمزودي OpenAI وAnthropic وGoogle Gemini وOpenRouter وOpenAI-Compatible، ومزود Fake للاختبار.
+## البنية المنفذة
 
-تمت إضافة تخزين الأسرار المشفر باستخدام Android Keystore؛ لا يُحفظ النص السري في Room، بل يحفظ التطبيق alias فقط ويضع القيمة المشفرة في تخزين خاص. كما تمت إضافة حالات محادثة موحدة للإرسال والبث والإكمال والفشل والإلغاء، وحفظ الرسائل الجزئية أثناء البث وإيقاف الطلب عبر إلغاء coroutine.
+أصبح المشروع مقسمًا بوضوح إلى وحدات `app` و`core:model` و`core:ai` و`data:database`. أضيف داخل التطبيق `AgentDroidApplication` و`AppContainer` ليكونا بديلًا معماريًا واضحًا عن ربط Room والاعتمادات مباشرة بالـ Activity. كما أضيفت طبقات `Repositories` و`UseCases` وViewModels مستقلة للمحادثة والمزودات والمحادثات ومساحات العمل والذاكرة والمهارات والإعدادات.
 
-## Architecture
+المسار المعتمد الآن هو:
 
-المسار الأساسي هو: Compose UI → ViewModel → ProviderRegistry/AiProvider → OkHttp، بينما تعتمد البيانات المحلية على Room. تم فصل نماذج المجال عن تطبيقات المزودين، ولم تُربط الواجهة مباشرة بمكتبة SDK خاصة بمزود. تم ضبط نسخة Release مع R8 وresource shrinking، مع ملفات ProGuard أساسية للتسلسل والنماذج.
+> Compose UI → ViewModels → Use Cases/Repositories → Room أو ProviderRegistry → مزود AI مستقل → OkHttp Transport.
 
-## Providers verified
+تستخدم طبقة النقل `suspendCancellableCoroutine`، وتُلغي اتصال OkHttp عند إلغاء coroutine، وتفصل أخطاء المصادقة ومحدودية المعدل والمهلة والشبكة وSSL وأخطاء المزود والتسلسل. لا تعتمد الواجهة على SDK خاص بمزود واحد.
 
-تم تنفيذ طبقات التكامل التالية داخل `core:ai`:
+## مزودو الذكاء الاصطناعي
 
-| المزود | التنفيذ | اختبار API حقيقي |
-|---|---|---|
-| OpenAI | موجود عبر HTTP وSSE | لم يُنفّذ لعدم توفر مفتاح API |
-| Anthropic | موجود عبر HTTP abstraction | لم يُنفّذ لعدم توفر مفتاح API |
-| Google Gemini | موجود عبر HTTP abstraction | لم يُنفّذ لعدم توفر مفتاح API |
-| OpenRouter | موجود عبر HTTP وheaders الخاصة | لم يُنفّذ لعدم توفر مفتاح API |
-| OpenAI-Compatible | موجود مع Base URL وAPI Key اختياري | لم يُنفّذ لعدم توفر endpoint فعلي |
-| Fake Provider | موجود للبث والاختبارات | تم استخدامه كمسار اختبار محلي |
+تم فصل تطبيقات OpenAI وOpenRouter وOpenAI-Compatible داخل طبقة توافق مشتركة مع بقاء كل مزود قابلًا للضبط بشكل مستقل. لكل إعداد مزود UUID مستقل، واسم، ونوع، وBase URL، ونموذج، وOrganization ID، وApp Name، وSite URL، وترويسات مخصصة. لا يوجد ربط بين هوية سجل الإعداد وبين اسم enum الخاص بالمزود.
 
-## Build verification
+تم تنفيذ Anthropic باستخدام Messages API الأصلي على `/messages` مع `x-api-key` و`anthropic-version` وحقول `system` و`max_tokens` و`stream`. يدعم parser أحداث `message_start` و`content_block_delta` و`message_delta` و`message_stop`، ويستخرج النص والتفكير والاستخدام ويتجاهل الأحداث غير المعروفة بأمان، وفق تسلسل SSE الموثق رسميًا.[1]
 
-تم تشغيل الأوامر التالية فعليًا:
+تم تنفيذ Gemini باستخدام REST الأصلي على `models/{model}:streamGenerateContent` مع `contents[].parts[]` و`systemInstruction` و`generationConfig` و`usageMetadata`، مع فصل قائمة النماذج على `/models`. هذه هي endpoints الرسمية الموثقة لـ `generateContent` و`streamGenerateContent`.[2]
 
-```text
-./gradlew --no-daemon --max-workers=1 clean assembleDebug -Pandroid.aapt2FromMavenOverride=$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt2
-./gradlew --no-daemon --max-workers=1 test lintDebug assembleRelease -Pandroid.aapt2FromMavenOverride=$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt2
-```
+## التخزين والأمان
 
-النتيجة: **BUILD SUCCESSFUL**. تم إنتاج:
+تم الإبقاء على Room للمحادثات والرسائل وإعدادات المزودين ومساحات العمل والذاكرة والمهارات وإعدادات التطبيق. أضيفت حدود Repository للحذف والأرشفة والبحث والتفعيل وتحديد النموذج، مع نقطة `DatabaseMigrations.ALL` قابلة للتوسع دون السماح بـ destructive migration.
 
-| artifact | الحالة |
+تُحفظ مفاتيح API عبر Android Keystore باستخدام AES/GCM مع IV جديد لكل عملية تشفير، بينما يبقى في سجل المزود alias فقط. أضيفت عمليات `contains` و`mask` و`clear` وreplacement آمن. كما تم تعطيل النسخ الاحتياطي في manifest. أضيفت DataStore Preferences لإعداد اللغة والثيم والألوان الديناميكية والمزود والنموذج الافتراضيين ووضع المطور.
+
+## الواجهات وتجربة الاستخدام
+
+أصبح `MainActivity` نقطة إطلاق صغيرة، بينما انتقلت composition إلى `AgentDroidRoot`. تشمل الواجهات Home وChat وProviders وModels وConversations وWorkspaces وMemory وSkills وSettings وAdd Provider. أضيفت selectors للمزود والنموذج، واختبار اتصال يعرض النتيجة والـ latency وعدد النماذج، وتفعيل/تعطيل المزود، وحذف مع تأكيد، وتدفقات CRUD أساسية لمساحات العمل والذاكرة والمهارات.
+
+يدعم Chat حفظ الرسالة الجزئية أثناء البث، حالات `SUBMITTING` و`STREAMING` و`COMPLETED` و`FAILED` و`CANCELLED`، الإيقاف عبر إلغاء الاتصال، إعادة المحاولة دون إضافة رسالة مستخدم ثانية، وإعادة التوليد. يستخدم عرض الرسائل CommonMark فعليًا مع دعم GFM tables وcode blocks وselection/copy بدل عرض Markdown كنص خام فقط. أضيفت موارد عربية وإنجليزية ودعم RTL وتغيير اللغة عبر DataStore.
+
+## الاختبارات والفحوصات
+
+أضيفت اختبارات MockWebServer لبروتوكولات OpenAI SSE وAnthropic Messages SSE وGemini streaming JSON، وللأخطاء 401، مع اختبار registry. أضيف اختبار Compose smoke test للتحقق من ظهور shell الرئيسي، وقد تم تجميع مصدر اختبار Android دون تشغيله على جهاز.
+
+تم تشغيل التحقق التالي دون إنشاء APK:
+
+| الفحص | النتيجة |
 |---|---|
-| `app/build/outputs/apk/debug/app-debug.apk` | تم إنتاجه بنجاح، 21,142,130 bytes |
-| `app/build/outputs/apk/release/app-release-unsigned.apk` | تم إنتاجه بنجاح، 2,640,600 bytes |
-| Debug unit tests | نجحت |
-| `lintDebug` | نجح |
-| Release R8/resource shrinking | نجح |
+| `:core:ai:testDebugUnitTest` | ناجح |
+| `:app:testDebugUnitTest` | لا توجد اختبارات JVM إضافية، اكتمل بنجاح |
+| `:app:compileDebugAndroidTestKotlin` | ناجح |
+| `:app:compileDebugKotlin` | ناجح مع تحذيرات deprecation غير حاجزة |
+| `:app:lintDebug` | ناجح |
+| `git diff --check` | ناجح |
+| فحص literals شبيهة بمفاتيح API أو GitHub tokens | لم يُعثر على أسرار داخل المشروع |
 
-## Tests
+## ما تم تأجيله عمدًا
 
-يوجد اختبار JVM فعلي لـ `ProviderRegistry` باستخدام Fake Provider، وقد نجح في نسختي Debug وRelease. كما اكتمل فحص Lint للمشروع والوحدات. لم يتوفر Emulator أو جهاز Android متصل؛ لذلك لم يتم الادعاء باختبار تثبيت أو فتح التطبيق أو فحص RTL وStreaming من خلال واجهة جهاز حقيقي.
+لم يتم تحويل المشروع إلى APK في هذه الدورة تنفيذًا لتوجيه المستخدم. كما لم يتم تشغيل اختبار UI على Emulator أو جهاز Android، ولم يتم تنفيذ طلبات API حقيقية لغياب مفاتيح فعلية ونقاط اختبار معتمدة. هذه القيود لا تعني فشل البنية، لكنها تمنع وصف المشروع بأنه Production-ready نهائيًا قبل مرحلة الاختبار الواقعي والتغليف.
 
-## Remaining
+## الحالة الحالية
 
-لا يمكن اعتبار القائمة الأصلية مكتملة بالكامل بعد. ما يزال يلزم قبل وصف المرحلة بأنها Production-grade نهائية: اختبار UI على Emulator أو جهاز، اختبار API فعلي بمفاتيح حقيقية، استكمال CRUD التفاعلي الكامل للحذف والتعديل والأرشفة والتأكيد، شاشة نتيجة اختبار الاتصال وعرض قائمة النماذج من الشبكة، اختيار اللغة وتخزين الإعدادات عبر DataStore، واستكمال تغطية الاختبارات المطلوبة لكل الحالات. هذه البنود لم تُخفَ ولم يُدّعَ إنجازها دون تحقق.
+البنية الحالية جاهزة لمواصلة العمل عليها داخل المستودع، مع تأجيل artifact النهائي إلى المرحلة التي يطلب فيها المستخدم إنشاء APK. لا ينبغي اعتبار `build/` أو APK قديم من الدورة السابقة دليلًا على أن نسخة التعديلات الحالية تم تغليفها.
 
-## Ready for Phase 2
+## المراجع
 
-**لا، ليست جاهزة فعليًا للانتقال إلى المرحلة الثانية بعد.** البناء الأساسي ناجح، لكن يلزم أولًا استكمال البنود المتبقية أعلاه وإجراء اختبار Runtime على جهاز أو Emulator متاح.
+[1]: https://platform.claude.com/docs/en/build-with-claude/streaming "Anthropic Claude Platform Docs — Streaming messages"
+[2]: https://ai.google.dev/api/generate-content "Google AI for Developers — Generating content API reference"
