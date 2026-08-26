@@ -21,6 +21,7 @@ data class AppSettingEntity(@PrimaryKey val key: String, val value: String)
 
 @Dao interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE archived = 0 ORDER BY updatedAt DESC") fun observeAll(): Flow<List<ConversationEntity>>
+    @Query("SELECT * FROM conversations ORDER BY archived ASC, updatedAt DESC") fun observeIncludingArchived(): Flow<List<ConversationEntity>>
     @Query("SELECT * FROM conversations WHERE title LIKE '%' || :query || '%' ORDER BY updatedAt DESC") fun search(query: String): Flow<List<ConversationEntity>>
     @Query("SELECT * FROM conversations WHERE id = :id") suspend fun get(id: String): ConversationEntity?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(item: ConversationEntity)
@@ -32,6 +33,7 @@ data class AppSettingEntity(@PrimaryKey val key: String, val value: String)
     @Query("SELECT * FROM messages WHERE conversationId = :id AND status NOT IN ('FAILED') ORDER BY createdAt ASC") fun observe(id: String): Flow<List<MessageEntity>>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(item: MessageEntity)
     @Query("DELETE FROM messages WHERE conversationId = :id") suspend fun deleteForConversation(id: String)
+    @Query("DELETE FROM messages WHERE conversationId = :conversationId AND createdAt > :createdAt") suspend fun deleteAfter(conversationId: String, createdAt: Long)
 }
 @Dao interface ProviderDao {
     @Query("SELECT * FROM provider_configs ORDER BY name") fun observeAll(): Flow<List<ProviderConfigEntity>>

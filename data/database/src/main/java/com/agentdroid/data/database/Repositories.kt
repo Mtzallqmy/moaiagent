@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface ConversationRepository {
     fun observeAll(): Flow<List<ConversationEntity>>
+    fun observeIncludingArchived(): Flow<List<ConversationEntity>>
     fun observeSearch(query: String): Flow<List<ConversationEntity>>
     suspend fun get(id: String): ConversationEntity?
     suspend fun save(conversation: ConversationEntity)
@@ -14,6 +15,7 @@ interface ConversationRepository {
 
 class RoomConversationRepository(private val dao: ConversationDao, private val messages: MessageDao) : ConversationRepository {
     override fun observeAll() = dao.observeAll()
+    override fun observeIncludingArchived() = dao.observeIncludingArchived()
     override fun observeSearch(query: String) = dao.search(query)
     override suspend fun get(id: String) = dao.get(id)
     override suspend fun save(conversation: ConversationEntity) = dao.upsert(conversation)
@@ -22,8 +24,8 @@ class RoomConversationRepository(private val dao: ConversationDao, private val m
     override suspend fun delete(id: String) { messages.deleteForConversation(id); dao.deleteById(id) }
 }
 
-interface MessageRepository { fun observe(conversationId: String): Flow<List<MessageEntity>>; suspend fun save(message: MessageEntity) }
-class RoomMessageRepository(private val dao: MessageDao) : MessageRepository { override fun observe(conversationId: String) = dao.observe(conversationId); override suspend fun save(message: MessageEntity) = dao.upsert(message) }
+interface MessageRepository { fun observe(conversationId: String): Flow<List<MessageEntity>>; suspend fun save(message: MessageEntity); suspend fun deleteAfter(conversationId: String, createdAt: Long) }
+class RoomMessageRepository(private val dao: MessageDao) : MessageRepository { override fun observe(conversationId: String) = dao.observe(conversationId); override suspend fun save(message: MessageEntity) = dao.upsert(message); override suspend fun deleteAfter(conversationId: String, createdAt: Long) = dao.deleteAfter(conversationId, createdAt) }
 
 interface ProviderRepository {
     fun observeAll(): Flow<List<ProviderConfigEntity>>

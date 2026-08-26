@@ -1,62 +1,61 @@
-# AgentDroid — تقرير تشديد بنية المرحلة الأولى
+# AgentDroid — تقرير إغلاق Phase 1
 
-## نطاق التنفيذ
+## النطاق
 
-نُفذت تعديلات البرومبت على بنية مشروع Android الحالية مع الالتزام بطلب تأجيل تحويل المشروع إلى APK. لذلك لم يتم تشغيل `assembleDebug` أو `assembleRelease` في هذه الدورة، ولم تُستبدل أولوية البنية باختبار artifact نهائي.
+تم تنفيذ جولة الإغلاق على المشروع الحالي داخل مستودع `moaiagent` دون إعادة بنائه من الصفر ودون إضافة ميزات Phase 2 مثل Terminal أو Git أو Agent Tools. شملت الجولة إكمال تدفقات المحادثات وCRUD والرسائل وMarkdown والإعدادات ومفاتيح API والترويسات المخصصة، مع الحفاظ على المسار المعماري:
 
-## البنية المنفذة
+> Compose → ViewModels → UseCases / Repositories → Room / ProviderRegistry.
 
-أصبح المشروع مقسمًا بوضوح إلى وحدات `app` و`core:model` و`core:ai` و`data:database`. أضيف داخل التطبيق `AgentDroidApplication` و`AppContainer` ليكونا بديلًا معماريًا واضحًا عن ربط Room والاعتمادات مباشرة بالـ Activity. كما أضيفت طبقات `Repositories` و`UseCases` وViewModels مستقلة للمحادثة والمزودات والمحادثات ومساحات العمل والذاكرة والمهارات والإعدادات.
+## ما تم إكماله
 
-المسار المعتمد الآن هو:
+تمت إضافة route فعلي بصيغة `chat/{conversationId}`. عند فتح محادثة من Home أو Conversations يستخدم التطبيق نفس المعرّف، ويحمّل سجل الرسائل و`providerId` و`modelId` المرتبطين بالمحادثة عبر `ChatViewModel.openConversation`، ولا ينشئ محادثة جديدة عند الفتح.
 
-> Compose UI → ViewModels → Use Cases/Repositories → Room أو ProviderRegistry → مزود AI مستقل → OkHttp Transport.
+أصبحت شاشة Conversations تدعم الفتح وإعادة التسمية والأرشفة وإلغاء الأرشفة والحذف مع تأكيد والبحث ومحادثة جديدة. تدعم شاشة Workspaces الإنشاء والتعديل/إعادة التسمية والوصف والحذف مع تأكيد والفتح لعرض التفاصيل، دون Files أو Git. تدعم Memory الإنشاء والتعديل والحذف والتفعيل/التعطيل ونطاقي GLOBAL وWORKSPACE مع اختيار مساحة العمل. تدعم Skills الإنشاء والتعديل والحذف والتفعيل/التعطيل واسم المهارة ووصفها وتعليماتها ونطاقي GLOBAL وWORKSPACE، ولا تساوي الوصف بالتعليمات تلقائيًا.
 
-تستخدم طبقة النقل `suspendCancellableCoroutine`، وتُلغي اتصال OkHttp عند إلغاء coroutine، وتفصل أخطاء المصادقة ومحدودية المعدل والمهلة والشبكة وSSL وأخطاء المزود والتسلسل. لا تعتمد الواجهة على SDK خاص بمزود واحد.
+أضيف تعديل رسالة المستخدم. بعد التعديل تُحذف الرسائل اللاحقة من نفس المحادثة ويُترك قرار Retry أو Regenerate للمستخدم، بينما لا يضيف Retry وRegenerate رسالة مستخدم مكررة. يدعم Chat حالات البث والإكمال والفشل والإلغاء وحفظ الرد الجزئي وإيقاف الطلب عبر إلغاء coroutine.
 
-## مزودو الذكاء الاصطناعي
+تم تحسين CommonMark renderer ليعرض العناوين والتنسيقات الغامقة والمائلة والقوائم العادية والمرقمة والاقتباسات والكود المضمّن والروابط وكتل الكود والجداول قدر الإمكان. كتل الكود LTR وبخط monospace مع وسم اللغة والنسخ والتحديد والتمرير الأفقي.
 
-تم فصل تطبيقات OpenAI وOpenRouter وOpenAI-Compatible داخل طبقة توافق مشتركة مع بقاء كل مزود قابلًا للضبط بشكل مستقل. لكل إعداد مزود UUID مستقل، واسم، ونوع، وBase URL، ونموذج، وOrganization ID، وApp Name، وSite URL، وترويسات مخصصة. لا يوجد ربط بين هوية سجل الإعداد وبين اسم enum الخاص بالمزود.
+تم تفعيل Dynamic Color باستخدام `dynamicLightColorScheme` و`dynamicDarkColorScheme` على Android 12+ عند تفعيل الخيار. كما أصبح `AppLanguage.SYSTEM` يعتمد لغة النظام واتجاهه، مع تفعيل RTL تلقائيًا للنظام العربي.
 
-تم تنفيذ Anthropic باستخدام Messages API الأصلي على `/messages` مع `x-api-key` و`anthropic-version` وحقول `system` و`max_tokens` و`stream`. يدعم parser أحداث `message_start` و`content_block_delta` و`message_delta` و`message_stop`، ويستخرج النص والتفكير والاستخدام ويتجاهل الأحداث غير المعروفة بأمان، وفق تسلسل SSE الموثق رسميًا.[1]
+تدعم شاشة المزود إظهار مفتاح API بشكل مقنّع، وإظهاره مؤقتًا، ونسخه، واستبداله، وحذفه. تبقى المفاتيح خارج Room وتُحفظ مشفرة عبر Android Keystore؛ كما تم تقييد القيمة المكشوفة بالمزود المحدد حتى لا تظهر قيمة مزود آخر في بطاقة مختلفة. أصبحت Custom Headers rows واضحة من Key وValue مع Add وRemove بدل الاعتماد على textarea فقط.
 
-تم تنفيذ Gemini باستخدام REST الأصلي على `models/{model}:streamGenerateContent` مع `contents[].parts[]` و`systemInstruction` و`generationConfig` و`usageMetadata`، مع فصل قائمة النماذج على `/models`. هذه هي endpoints الرسمية الموثقة لـ `generateContent` و`streamGenerateContent`.[2]
+## التحقق المنفذ
 
-## التخزين والأمان
+تم تنفيذ الأوامر المطلوبة فعليًا باستخدام Android SDK المتاح:
 
-تم الإبقاء على Room للمحادثات والرسائل وإعدادات المزودين ومساحات العمل والذاكرة والمهارات وإعدادات التطبيق. أضيفت حدود Repository للحذف والأرشفة والبحث والتفعيل وتحديد النموذج، مع نقطة `DatabaseMigrations.ALL` قابلة للتوسع دون السماح بـ destructive migration.
-
-تُحفظ مفاتيح API عبر Android Keystore باستخدام AES/GCM مع IV جديد لكل عملية تشفير، بينما يبقى في سجل المزود alias فقط. أضيفت عمليات `contains` و`mask` و`clear` وreplacement آمن. كما تم تعطيل النسخ الاحتياطي في manifest. أضيفت DataStore Preferences لإعداد اللغة والثيم والألوان الديناميكية والمزود والنموذج الافتراضيين ووضع المطور.
-
-## الواجهات وتجربة الاستخدام
-
-أصبح `MainActivity` نقطة إطلاق صغيرة، بينما انتقلت composition إلى `AgentDroidRoot`. تشمل الواجهات Home وChat وProviders وModels وConversations وWorkspaces وMemory وSkills وSettings وAdd Provider. أضيفت selectors للمزود والنموذج، واختبار اتصال يعرض النتيجة والـ latency وعدد النماذج، وتفعيل/تعطيل المزود، وحذف مع تأكيد، وتدفقات CRUD أساسية لمساحات العمل والذاكرة والمهارات.
-
-يدعم Chat حفظ الرسالة الجزئية أثناء البث، حالات `SUBMITTING` و`STREAMING` و`COMPLETED` و`FAILED` و`CANCELLED`، الإيقاف عبر إلغاء الاتصال، إعادة المحاولة دون إضافة رسالة مستخدم ثانية، وإعادة التوليد. يستخدم عرض الرسائل CommonMark فعليًا مع دعم GFM tables وcode blocks وselection/copy بدل عرض Markdown كنص خام فقط. أضيفت موارد عربية وإنجليزية ودعم RTL وتغيير اللغة عبر DataStore.
-
-## الاختبارات والفحوصات
-
-أضيفت اختبارات MockWebServer لبروتوكولات OpenAI SSE وAnthropic Messages SSE وGemini streaming JSON، وللأخطاء 401، مع اختبار registry. أضيف اختبار Compose smoke test للتحقق من ظهور shell الرئيسي، وقد تم تجميع مصدر اختبار Android دون تشغيله على جهاز.
-
-تم تشغيل التحقق التالي دون إنشاء APK:
-
-| الفحص | النتيجة |
+| الأمر | النتيجة |
 |---|---|
-| `:core:ai:testDebugUnitTest` | ناجح |
-| `:app:testDebugUnitTest` | لا توجد اختبارات JVM إضافية، اكتمل بنجاح |
-| `:app:compileDebugAndroidTestKotlin` | ناجح |
-| `:app:compileDebugKotlin` | ناجح مع تحذيرات deprecation غير حاجزة |
-| `:app:lintDebug` | ناجح |
+| `./gradlew clean` | `BUILD SUCCESSFUL` |
+| `./gradlew test` | ناجح ضمن مجموعة التحقق؛ اختبارات `core:ai` ناجحة ولا توجد اختبارات JVM إضافية في app |
+| `./gradlew lintDebug` | `BUILD SUCCESSFUL` |
+| `./gradlew assembleDebug` | `BUILD SUCCESSFUL` |
+| `./gradlew assembleRelease` | `BUILD SUCCESSFUL` |
 | `git diff --check` | ناجح |
-| فحص literals شبيهة بمفاتيح API أو GitHub tokens | لم يُعثر على أسرار داخل المشروع |
+| فحص أسرار literals داخل المشروع | لم يُعثر على مفاتيح أو tokens داخل المصادر |
 
-## ما تم تأجيله عمدًا
+تم إنتاج artifacts التالية من النسخة الحالية:
 
-لم يتم تحويل المشروع إلى APK في هذه الدورة تنفيذًا لتوجيه المستخدم. كما لم يتم تشغيل اختبار UI على Emulator أو جهاز Android، ولم يتم تنفيذ طلبات API حقيقية لغياب مفاتيح فعلية ونقاط اختبار معتمدة. هذه القيود لا تعني فشل البنية، لكنها تمنع وصف المشروع بأنه Production-ready نهائيًا قبل مرحلة الاختبار الواقعي والتغليف.
+| الملف | الحجم |
+|---|---:|
+| `app/build/outputs/apk/debug/app-debug.apk` | 21,905,977 bytes |
+| `app/build/outputs/apk/release/app-release-unsigned.apk` | 2,962,029 bytes |
 
-## الحالة الحالية
+أُضيف مصدر Compose smoke test وتم التحقق من تجميعه سابقًا عبر `:app:compileDebugAndroidTestKotlin`.
 
-البنية الحالية جاهزة لمواصلة العمل عليها داخل المستودع، مع تأجيل artifact النهائي إلى المرحلة التي يطلب فيها المستخدم إنشاء APK. لا ينبغي اعتبار `build/` أو APK قديم من الدورة السابقة دليلًا على أن نسخة التعديلات الحالية تم تغليفها.
+## قيد الاختبار الواقعي
+
+تم فحص توفر الأجهزة عبر `adb devices -l` ولم يوجد Emulator أو جهاز Android متصل. لذلك تعذر تشغيل `./gradlew connectedDebugAndroidTest` والاختبار اليدوي لتدفقات RTL وDynamic Color وفتح المحادثات فعليًا على جهاز. كما لم تُنفذ طلبات API حقيقية بسبب عدم توفر مفاتيح ونقاط نهاية اختبار معتمدة.
+
+بناءً على شرط البرومبت الذي لا يسمح بكتابة YES إلا بعد تنفيذ كل البنود واختبار الجهاز إن توفر، تكون الحالة الدقيقة:
+
+> **Ready for Phase 2: NO**
+>
+> السبب الوحيد المتبقي للتحقق النهائي هو اختبار Runtime/UI على Emulator أو Device وطلبات API حقيقية؛ أما البناء، الاختبارات الوحدوية، Lint، Debug، وRelease فقد نجحت.
+
+## الحالة البرمجية
+
+تم رفع تعديلات الإغلاق إلى الفرع `main` في مستودع `moaiagent` بعد التحقق النهائي. لم تتم إضافة ميزات Phase 2.
 
 ## المراجع
 
