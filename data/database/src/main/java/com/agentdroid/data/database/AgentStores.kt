@@ -12,6 +12,7 @@ import com.agentdroid.core.workspace.ChangeSetStore
 import com.agentdroid.core.workspace.FileChange
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
@@ -24,42 +25,13 @@ class RoomPermissionRuleStore(private val dao: PermissionRuleDao) : PermissionRu
     override suspend fun delete(id: String) = dao.deleteById(id)
     fun observe(): Flow<List<PermissionRule>> = dao.observeAll().map { rows -> rows.map { it.toDomain() } }
 
-    private fun PermissionRuleEntity.toDomain() = PermissionRule(
-        id = id,
-        toolName = toolName,
-        workspaceId = workspaceId,
-        decision = PermissionDecision.valueOf(decision),
-        scope = PermissionScope.valueOf(scope),
-        createdAt = createdAt
-    )
-
-    private fun PermissionRule.toEntity() = PermissionRuleEntity(
-        id = id,
-        toolName = toolName,
-        workspaceId = workspaceId,
-        decision = decision.name,
-        scope = scope.name,
-        createdAt = createdAt
-    )
+    private fun PermissionRuleEntity.toDomain() = PermissionRule(id, toolName, workspaceId, PermissionDecision.valueOf(decision), PermissionScope.valueOf(scope), createdAt)
+    private fun PermissionRule.toEntity() = PermissionRuleEntity(id, toolName, workspaceId, decision.name, scope.name, createdAt)
 }
 
 class RoomAuditSink(private val dao: AuditLogDao) : AuditSink {
     override suspend fun record(entry: AuditEntry) {
-        dao.insert(
-            AuditLogEntity(
-                id = UUID.randomUUID().toString(),
-                toolCallId = entry.toolCallId,
-                toolName = entry.toolName,
-                inputSummary = entry.inputSummary,
-                resultSummary = entry.resultSummary,
-                durationMs = entry.durationMs,
-                status = entry.status,
-                permissionDecision = entry.permissionDecision.name,
-                timestamp = entry.timestamp,
-                workspaceId = entry.workspaceId,
-                conversationId = entry.conversationId
-            )
-        )
+        dao.insert(AuditLogEntity(UUID.randomUUID().toString(), entry.toolCallId, entry.toolName, entry.inputSummary, entry.resultSummary, entry.durationMs, entry.status, entry.permissionDecision.name, entry.timestamp, entry.workspaceId, entry.conversationId))
     }
 }
 
@@ -73,17 +45,7 @@ class RoomChangeSetStore(private val dao: ChangeSetDao) : ChangeSetStore {
     override suspend fun list(workspaceId: String?): List<ChangeSet> = dao.list(workspaceId).map { it.toDomain() }
     fun observe(workspaceId: String): Flow<List<ChangeSet>> = dao.observe(workspaceId).map { rows -> rows.map { it.toDomain() } }
 
-    private fun ChangeSet.toEntity() = ChangeSetEntity(
-        id = id,
-        workspaceId = workspaceId,
-        filesJson = agentStoreJson.encodeToString(files),
-        createdAt = createdAt,
-        status = status.name,
-        originatingToolCallId = originatingToolCallId,
-        appliedAt = appliedAt,
-        revertedAt = revertedAt
-    )
-
+    private fun ChangeSet.toEntity() = ChangeSetEntity(id, workspaceId, agentStoreJson.encodeToString(files), createdAt, status.name, originatingToolCallId, appliedAt, revertedAt)
     private fun ChangeSetEntity.toDomain() = ChangeSet(
         id = id,
         workspaceId = workspaceId,
