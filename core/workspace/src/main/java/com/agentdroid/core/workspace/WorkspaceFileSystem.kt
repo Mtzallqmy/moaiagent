@@ -71,6 +71,7 @@ class WorkspaceFileSystem(
     }
 
     fun rootPath(): String = root.path
+    fun exists(path: String): Boolean = resolve(path).exists()
 
     fun resolve(path: String, mustExist: Boolean = false): File = resolveInternal(path, mustExist, allowInternal = false)
 
@@ -251,7 +252,8 @@ class WorkspaceFileSystem(
         if (dst.exists() && !overwrite) throw ToolRegistryException(AgentError.validation("Destination already exists: $destination"))
         dst.parentFile?.let { if (!it.exists() && !it.mkdirs()) throw ToolRegistryException(AgentError.io("Could not create destination parent")) }
         try {
-            Files.move(src.toPath(), dst.toPath(), *(if (overwrite) arrayOf(StandardCopyOption.REPLACE_EXISTING) else emptyArray()))
+            if (overwrite) Files.move(src.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            else Files.move(src.toPath(), dst.toPath())
         } catch (error: Throwable) {
             throw ToolRegistryException(AgentError.io("Move failed: ${error.message}"))
         }
@@ -277,11 +279,29 @@ class WorkspaceFileSystem(
         val trash = resolveInternal(trashPath, mustExist = true, allowInternal = true)
         val destination = resolve(destinationPath)
         if (destination.exists()) throw ToolRegistryException(AgentError.patchConflict("Cannot restore because destination exists: $destinationPath"))
-        destination.parentFile?.mkdirs()
+        destination.parentFile?.let { if (!it.exists() && !it.mkdirs()) throw ToolRegistryException(AgentError.io("Could not create restore parent")) }
         Files.move(trash.toPath(), destination.toPath())
     }
 
     fun sha256(path: String): String = sha256(resolve(path, mustExist = true))
+
+    fun fingerprint(path: String): String {
+        val target = resolve(path, mustExist = true)
+        if (target.isFile) return sha256(target)
+        val digest = MessageDigest.getInstance("SHA-256")
+        fun walk(file: File) {
+            val rel = relative(file)
+            digest.update(rel.toByteArray(StandardCharsets.UTF_8))
+            digest.update(0)
+            if (file.isFile) {
+                digest.update(sha256(file).toByteArray(StandardCharsets.UTF_8))
+            } else {
+                file.listFiles()?.sortedBy { it.name }?.forEach(::walk)
+            }
+        }
+        walk(target)
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     internal fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
