@@ -1,9 +1,10 @@
 package com.agentdroid.core.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 enum class ProviderKind { OPENAI, ANTHROPIC, GEMINI, OPENROUTER, COMPATIBLE, FAKE }
-enum class MessageRole { USER, ASSISTANT, SYSTEM }
+enum class MessageRole { USER, ASSISTANT, SYSTEM, TOOL }
 enum class MessageStatus { PENDING, STREAMING, COMPLETED, FAILED, CANCELLED }
 enum class MemoryScope { GLOBAL, WORKSPACE }
 enum class ChatPhase { IDLE, SUBMITTING, STREAMING, COMPLETED, FAILED, CANCELLED }
@@ -42,7 +43,28 @@ data class ProviderCapabilities(
 )
 
 @Serializable
-data class ChatMessage(val role: MessageRole, val content: String)
+data class ModelToolDefinition(
+    val name: String,
+    val description: String,
+    val inputSchema: JsonObject
+)
+
+@Serializable
+data class ModelToolCall(
+    val id: String,
+    val name: String,
+    val arguments: JsonObject,
+    val rawArguments: String = arguments.toString()
+)
+
+@Serializable
+data class ChatMessage(
+    val role: MessageRole,
+    val content: String = "",
+    val toolCalls: List<ModelToolCall> = emptyList(),
+    val toolCallId: String? = null,
+    val toolName: String? = null
+)
 
 @Serializable
 data class ChatRequest(
@@ -50,7 +72,8 @@ data class ChatRequest(
     val model: String,
     val systemPrompt: String? = null,
     val temperature: Double? = null,
-    val maxTokens: Int? = null
+    val maxTokens: Int? = null,
+    val tools: List<ModelToolDefinition> = emptyList()
 )
 
 @Serializable
@@ -60,9 +83,9 @@ sealed interface AiStreamEvent {
     data object Started : AiStreamEvent
     data class TextDelta(val text: String) : AiStreamEvent
     data class ReasoningDelta(val text: String) : AiStreamEvent
-    data class ToolCallStarted(val id: String) : AiStreamEvent
-    data class ToolCallDelta(val text: String) : AiStreamEvent
-    data class ToolCallCompleted(val id: String) : AiStreamEvent
+    data class ToolCallStarted(val id: String, val name: String, val index: Int = 0) : AiStreamEvent
+    data class ToolCallDelta(val id: String, val argumentsDelta: String, val index: Int = 0) : AiStreamEvent
+    data class ToolCallCompleted(val call: ModelToolCall, val index: Int = 0) : AiStreamEvent
     data class UsageEvent(val usage: Usage) : AiStreamEvent
     data object Completed : AiStreamEvent
     data class Error(val error: AppError) : AiStreamEvent
