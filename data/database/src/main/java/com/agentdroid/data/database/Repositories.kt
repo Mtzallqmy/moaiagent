@@ -29,6 +29,7 @@ class RoomMessageRepository(private val dao: MessageDao) : MessageRepository { o
 
 interface ProviderRepository {
     fun observeAll(): Flow<List<ProviderConfigEntity>>
+    suspend fun get(id: String): ProviderConfigEntity?
     suspend fun save(config: ProviderConfigEntity)
     suspend fun delete(id: String)
     suspend fun setEnabled(id: String, enabled: Boolean)
@@ -36,14 +37,27 @@ interface ProviderRepository {
 }
 class RoomProviderRepository(private val dao: ProviderDao) : ProviderRepository {
     override fun observeAll() = dao.observeAll()
+    override suspend fun get(id: String) = dao.get(id)
     override suspend fun save(config: ProviderConfigEntity) = dao.upsert(config)
     override suspend fun delete(id: String) = dao.deleteById(id)
     override suspend fun setEnabled(id: String, enabled: Boolean) = dao.setEnabled(id, enabled)
     override suspend fun setModel(id: String, model: String) = dao.setModel(id, model)
 }
 
-interface WorkspaceRepository { fun observeAll(): Flow<List<WorkspaceEntity>>; suspend fun save(item: WorkspaceEntity); suspend fun delete(id: String) }
-class RoomWorkspaceRepository(private val dao: WorkspaceDao) : WorkspaceRepository { override fun observeAll() = dao.observeAll(); override suspend fun save(item: WorkspaceEntity) = dao.upsert(item); override suspend fun delete(id: String) = dao.deleteById(id) }
+interface WorkspaceRepository {
+    fun observeAll(): Flow<List<WorkspaceEntity>>
+    suspend fun get(id: String): WorkspaceEntity?
+    suspend fun save(item: WorkspaceEntity)
+    suspend fun setLastOpenedFile(id: String, path: String?)
+    suspend fun delete(id: String)
+}
+class RoomWorkspaceRepository(private val dao: WorkspaceDao) : WorkspaceRepository {
+    override fun observeAll() = dao.observeAll()
+    override suspend fun get(id: String) = dao.get(id)
+    override suspend fun save(item: WorkspaceEntity) = dao.upsert(item)
+    override suspend fun setLastOpenedFile(id: String, path: String?) = dao.setLastOpenedFile(id, path)
+    override suspend fun delete(id: String) = dao.deleteById(id)
+}
 
 interface MemoryRepository { fun observeAll(): Flow<List<MemoryEntryEntity>>; suspend fun save(item: MemoryEntryEntity); suspend fun delete(id: String); suspend fun setEnabled(id: String, enabled: Boolean) }
 class RoomMemoryRepository(private val dao: MemoryDao) : MemoryRepository { override fun observeAll() = dao.observeAll(); override suspend fun save(item: MemoryEntryEntity) = dao.upsert(item); override suspend fun delete(id: String) = dao.deleteById(id); override suspend fun setEnabled(id: String, enabled: Boolean) = dao.setEnabled(id, enabled) }
