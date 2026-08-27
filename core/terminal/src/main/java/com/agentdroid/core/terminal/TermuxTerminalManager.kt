@@ -192,7 +192,7 @@ class TermuxTerminalSession internal constructor(
     }
 
     override fun resize(columns: Int, rows: Int, cellWidthPixels: Int, cellHeightPixels: Int) {
-        // Termux 0.118.3 exposes PTY resizing in character cells; pixel metrics remain in the abstraction for future engines.
+        // Termux 0.118.x exposes PTY resizing in character cells; pixel metrics remain in the abstraction for future engines.
         native.updateSize(columns.coerceAtLeast(2), rows.coerceAtLeast(2))
         refresh(native)
     }
