@@ -5,6 +5,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -304,8 +305,13 @@ class FileArtifactRepository(
 
     private fun validateContent(type: ArtifactType, content: String) {
         checkSize(content.toByteArray(StandardCharsets.UTF_8).size.toLong())
-        if (type == ArtifactType.JSON) runCatching { json.parseToJsonElement(content) }
-            .getOrElse { throw ArtifactWriteError("JSON artifact content is invalid", it) }
+        if (type == ArtifactType.JSON) runCatching {
+            val trimmed = content.trim()
+            val parsed = json.parseToJsonElement(trimmed)
+            if (parsed is JsonPrimitive && parsed.isString && !(trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+                throw IllegalArgumentException("Unquoted JSON string")
+            }
+        }.getOrElse { throw ArtifactWriteError("JSON artifact content is invalid", it) }
     }
 
     private fun checkSize(size: Long) {
