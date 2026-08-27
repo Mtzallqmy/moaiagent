@@ -171,6 +171,12 @@
     <string name="terminal_exited">انتهت بالرمز %1$d</string>
     <string name="view_output">عرض المخرجات</string>
     <string name="open_terminal">فتح الطرفية</string>
+    <string name="open_runtime">فتح بيئة التشغيل</string>
+    <string name="open_git">فتح Git</string>
+    <string name="terminal_no_session">اختر جلسة طرفية أو أنشئ واحدة.</string>
+    <string name="clear_terminal">مسح الطرفية</string>
+    <string name="copy_terminal">نسخ مخرجات الطرفية</string>
+    <string name="paste_terminal">لصق في الطرفية</string>
     <string name="processes">العمليات</string>
     <string name="background_processes">عمليات الخلفية</string>
     <string name="no_processes">لا توجد عمليات.</string>
@@ -200,9 +206,14 @@
     <!-- Phase 3 Git -->
     <string name="git_repository">المستودع</string>
     <string name="git_not_repository">مساحة العمل هذه ليست مستودع Git.</string>
+    <string name="git_not_initialized">لم تتم تهيئة Git.</string>
     <string name="git_initialize">تهيئة مستودع Git</string>
     <string name="git_branch">الفرع: %1$s</string>
     <string name="git_status">الحالة</string>
+    <string name="git_changes">التغييرات</string>
+    <string name="git_conflicts">التعارضات</string>
+    <string name="git_view_diff">عرض الفروقات</string>
+    <string name="git_no_staged">لا توجد ملفات مجهزة.</string>
     <string name="git_modified">معدل</string>
     <string name="git_added">مضاف</string>
     <string name="git_deleted">محذوف</string>
