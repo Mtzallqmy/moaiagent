@@ -45,6 +45,23 @@ class JGitEngineTest {
         assertEquals("base", engine.log(root, 1).getOrThrow().single().message)
     }
 
+    @Test fun unbornRepositoryCanListLogAndUnstageWithoutDeletingWorkingFile() = runBlocking {
+        val root = Files.createTempDirectory("agentdroid-git-unborn").toFile()
+        val engine = JGitEngine()
+        engine.init(root).getOrThrow()
+        assertTrue(engine.log(root).getOrThrow().isEmpty())
+
+        val file = java.io.File(root, "new.txt").apply { writeText("draft") }
+        engine.add(root, listOf("new.txt")).getOrThrow()
+        assertTrue("new.txt" in engine.status(root).getOrThrow().staged)
+        engine.restore(root, listOf("new.txt"), staged = true).getOrThrow()
+
+        assertTrue(file.exists())
+        val status = engine.status(root).getOrThrow()
+        assertFalse("new.txt" in status.staged)
+        assertTrue("new.txt" in status.untracked)
+    }
+
     @Test fun validationRejectsEscapesAndBadCommitMessages() {
         val root = Files.createTempDirectory("agentdroid-git-validation").toFile()
         assertThrows(IllegalArgumentException::class.java) { validateGitPath(root, "../outside") }
