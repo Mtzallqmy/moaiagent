@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -22,6 +23,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.agentdroid.AgentDroidApplication
+import com.agentdroid.R
 import com.agentdroid.settings.AppLanguage
 import com.agentdroid.settings.AppTheme
 import com.agentdroid.viewmodel.ContainerViewModelFactory
@@ -63,9 +65,9 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
     Scaffold(
         bottomBar = {
             if (topLevel) NavigationBar {
-                NavigationBarItem(route == "agent", { nav.navigate("agent") { launchSingleTop = true; popUpTo("agent") { inclusive = false } } }, { Icon(Icons.Default.Chat, "Agent") }, label = { Text("Agent") })
-                NavigationBarItem(route == "workspaces", { nav.navigate("workspaces") { launchSingleTop = true } }, { Icon(Icons.Default.Folder, "Workspaces") }, label = { Text("Workspaces") })
-                NavigationBarItem(route == "more", { nav.navigate("more") { launchSingleTop = true } }, { Icon(Icons.Default.MoreHoriz, "More") }, label = { Text("More") })
+                NavigationBarItem(route == "agent", { nav.navigate("agent") { launchSingleTop = true; popUpTo("agent") { inclusive = false } } }, { Icon(Icons.Default.Chat, stringResource(R.string.agent)) }, label = { Text(stringResource(R.string.agent)) })
+                NavigationBarItem(route == "workspaces", { nav.navigate("workspaces") { launchSingleTop = true } }, { Icon(Icons.Default.Folder, stringResource(R.string.workspaces)) }, label = { Text(stringResource(R.string.workspaces)) })
+                NavigationBarItem(route == "more", { nav.navigate("more") { launchSingleTop = true } }, { Icon(Icons.Default.MoreHoriz, stringResource(R.string.more)) }, label = { Text(stringResource(R.string.more)) })
             }
         }
     ) { padding ->
@@ -83,10 +85,10 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
             composable("classic") { AgentDroidRoot() }
             composable("more") {
                 Column(Modifier.padding(20.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
-                    Text("AgentDroid", style = MaterialTheme.typography.headlineSmall)
-                    ListItem(headlineContent = { Text("Agent permissions & audit") }, leadingContent = { Icon(Icons.Default.Security, null) })
-                    Button({ nav.navigate("permissions") }) { Text("Manage permissions") }
-                    OutlinedButton({ nav.navigate("classic") }) { Text("Providers, Memory, Skills & Settings") }
+                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
+                    ListItem(headlineContent = { Text(stringResource(R.string.agent_permissions_audit)) }, leadingContent = { Icon(Icons.Default.Security, null) })
+                    Button({ nav.navigate("permissions") }) { Text(stringResource(R.string.manage_permissions)) }
+                    OutlinedButton({ nav.navigate("classic") }) { Text(stringResource(R.string.providers_memory_skills_settings)) }
                 }
             }
         }
