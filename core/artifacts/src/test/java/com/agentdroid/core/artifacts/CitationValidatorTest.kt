@@ -5,7 +5,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class CitationValidatorTest {
-    @Test fun onlyAcceptsSourcesPresentInResearchSession() = runBlocking {
+    @Test fun onlyAcceptsSourcesPresentInResearchSession(): Unit = runBlocking {
         val validator = CitationValidator(CitationSourceCatalog { session, source, url ->
             session == "r1" && source == "s1" && url == "https://example.com/a"
         })
@@ -18,7 +18,7 @@ class CitationValidatorTest {
         }
     }
 
-    @Test fun rejectsDuplicateReferences() = runBlocking {
+    @Test fun rejectsDuplicateReferences(): Unit = runBlocking {
         val validator = CitationValidator(CitationSourceCatalog { _, _, _ -> true })
         val reference = SourceReference("r1", "s1", "https://example.com/a")
         assertThrows(InvalidCitation::class.java) { runBlocking { validator.validate(listOf(reference, reference)) } }

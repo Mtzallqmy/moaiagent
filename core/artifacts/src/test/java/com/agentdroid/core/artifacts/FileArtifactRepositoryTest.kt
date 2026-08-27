@@ -30,7 +30,7 @@ class FileArtifactRepositoryTest {
 
     @After fun tearDown() { root.deleteRecursively() }
 
-    @Test fun lifecyclePersistsContentMetadataRenameCopyExportAndDelete() = runBlocking {
+    @Test fun lifecyclePersistsContentMetadataRenameCopyExportAndDelete(): Unit = runBlocking {
         val citation = SourceReference("research-1", "source-1", "https://example.com/source")
         val created = repository.create(CreateArtifactRequest(
             "w1", "conversation-1", ArtifactType.MARKDOWN, "Unsafe / Report", "first",
@@ -65,7 +65,7 @@ class FileArtifactRepositoryTest {
         assertThrows(ArtifactNotFound::class.java) { runBlocking { repository.get("w1", created.id) } }
     }
 
-    @Test fun rejectsTraversalAndReservedExportPaths() = runBlocking {
+    @Test fun rejectsTraversalAndReservedExportPaths(): Unit = runBlocking {
         val artifact = repository.create(CreateArtifactRequest("w1", "c1", ArtifactType.PLAIN_TEXT, "A", "text"))
         assertThrows(UnsafeArtifactPath::class.java) {
             runBlocking { repository.export("w1", artifact.id, "../outside.txt") }
@@ -79,7 +79,7 @@ class FileArtifactRepositoryTest {
         assertFalse(File(root.parentFile, "outside.txt").exists())
     }
 
-    @Test fun screenshotIsAReferenceAndDeleteDoesNotDeleteImage() = runBlocking {
+    @Test fun screenshotIsAReferenceAndDeleteDoesNotDeleteImage(): Unit = runBlocking {
         val image = File(root, "Screenshots/page.png").apply { parentFile.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
         val artifact = repository.addScreenshotReference(ScreenshotReferenceRequest("w1", "c1", "Page", "Screenshots/page.png"))
         assertEquals(ArtifactType.SCREENSHOT, artifact.type)
@@ -89,7 +89,7 @@ class FileArtifactRepositoryTest {
         assertTrue(image.exists())
     }
 
-    @Test fun validatesJsonAndBoundsReads() = runBlocking {
+    @Test fun validatesJsonAndBoundsReads(): Unit = runBlocking {
         assertThrows(ArtifactWriteError::class.java) {
             runBlocking { repository.create(CreateArtifactRequest("w1", "c1", ArtifactType.JSON, "Bad", "not-json")) }
         }

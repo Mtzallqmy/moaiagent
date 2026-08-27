@@ -22,7 +22,7 @@ dependencies {
     implementation(project(":core:agent"))
     implementation(libs.kotlinx.coroutines)
     implementation(libs.serialization.json)
-    implementation(libs.okhttp)
+    api(libs.okhttp)
     testImplementation("junit:junit:4.13.2")
     testImplementation(libs.kotlinx.coroutines)
     testImplementation(libs.mockwebserver)
