@@ -29,12 +29,11 @@ class ProcessManager(
     )
 
     private val entries = ConcurrentHashMap<String, Entry>()
+    private val completedResults = ConcurrentHashMap<String, ProcessResult>()
     private val _snapshots = MutableStateFlow<List<ProcessSnapshot>>(emptyList())
     val snapshots: StateFlow<List<ProcessSnapshot>> = _snapshots.asStateFlow()
 
-    init {
-        scope.launch { store.markPreviouslyRunningStale() }
-    }
+    init { scope.launch { store.markPreviouslyRunningStale() } }
 
     suspend fun runForeground(request: ProcessRequest, workspaceId: String, sessionId: String?): ProcessSnapshot {
         checkCapacity(background = false)
@@ -45,8 +44,12 @@ class ProcessManager(
         attach(entry)
         persist(entry, ProcessStatus.RUNNING, null, null)
         return try {
-            running.await()
-            currentSnapshot(entry)
+            val result = running.await()
+            completedResults[processId] = result
+            val snapshot = snapshotFromResult(entry, result)
+            updateSnapshot(snapshot)
+            persist(entry, snapshot.status, snapshot.exitCode, snapshot.finishedAt)
+            snapshot
         } catch (cancelled: CancellationException) {
             running.kill()
             throw cancelled
@@ -63,8 +66,10 @@ class ProcessManager(
         attach(entry)
         persist(entry, ProcessStatus.RUNNING, null, null)
         scope.launch {
-            running.await()
-            val snapshot = currentSnapshot(entry)
+            val result = running.await()
+            completedResults[processId] = result
+            val snapshot = snapshotFromResult(entry, result)
+            updateSnapshot(snapshot)
             persist(entry, snapshot.status, snapshot.exitCode, snapshot.finishedAt)
         }
         return currentSnapshot(entry)
@@ -128,6 +133,7 @@ class ProcessManager(
     }
 
     private fun currentSnapshot(entry: Entry): ProcessSnapshot {
+        completedResults[entry.processId]?.let { return snapshotFromResult(entry, it) }
         val status = entry.running.status.value
         val now = System.currentTimeMillis()
         return ProcessSnapshot(
@@ -149,46 +155,43 @@ class ProcessManager(
         )
     }
 
+    private fun snapshotFromResult(entry: Entry, result: ProcessResult): ProcessSnapshot {
+        val finished = entry.running.startedAt + result.durationMs
+        return ProcessSnapshot(
+            processId = entry.processId,
+            sessionId = entry.sessionId,
+            workspaceId = entry.workspaceId,
+            command = entry.command,
+            cwd = entry.cwd,
+            status = result.status,
+            stdout = result.stdout,
+            stderr = result.stderr,
+            exitCode = result.exitCode,
+            startedAt = entry.running.startedAt,
+            finishedAt = finished,
+            durationMs = result.durationMs,
+            timedOut = result.timedOut,
+            truncated = result.truncated,
+            background = entry.background
+        )
+    }
+
     private fun updateSnapshot(snapshot: ProcessSnapshot) {
         _snapshots.value = (_snapshots.value.filterNot { it.processId == snapshot.processId } + snapshot).sortedByDescending { it.startedAt }
     }
 
     private suspend fun persist(entry: Entry, status: ProcessStatus, exitCode: Int?, finishedAt: Long?) {
-        store.save(
-            ProcessMetadata(
-                processId = entry.processId,
-                sessionId = entry.sessionId,
-                workspaceId = entry.workspaceId,
-                command = entry.command,
-                cwd = entry.cwd,
-                status = status,
-                exitCode = exitCode,
-                startedAt = entry.running.startedAt,
-                finishedAt = finishedAt,
-                background = entry.background
-            )
-        )
+        store.save(ProcessMetadata(entry.processId, entry.sessionId, entry.workspaceId, entry.command, entry.cwd, status, exitCode, entry.running.startedAt, finishedAt, entry.background))
     }
 
     private fun displayCommand(request: ProcessRequest): String = CommandRedactor.redact(request.command ?: request.argv.joinToString(" "))
 
-    companion object {
-        private val activeStatuses = setOf(ProcessStatus.STARTING, ProcessStatus.RUNNING)
-    }
+    companion object { private val activeStatuses = setOf(ProcessStatus.STARTING, ProcessStatus.RUNNING) }
 }
 
 class ProcessLimitException(message: String) : IllegalStateException(message)
 
-private fun ProcessMetadata.toSnapshot(): ProcessSnapshot = ProcessSnapshot(
-    processId = processId,
-    sessionId = sessionId,
-    workspaceId = workspaceId,
-    command = command,
-    cwd = cwd,
-    status = status,
-    exitCode = exitCode,
-    startedAt = startedAt,
-    finishedAt = finishedAt,
-    durationMs = (finishedAt ?: System.currentTimeMillis()) - startedAt,
-    background = background
-)
+private fun ProcessMetadata.toSnapshot(): ProcessSnapshot {
+    val end = finishedAt ?: System.currentTimeMillis()
+    return ProcessSnapshot(processId, sessionId, workspaceId, command, cwd, status, exitCode = exitCode, startedAt = startedAt, finishedAt = finishedAt, durationMs = end - startedAt, background = background)
+}
