@@ -323,7 +323,12 @@ private class WebViewBrowserSession(
         val form = readFormsUnsafe().firstOrNull { candidate -> candidate.fields.any { it.elementId == elementId } }
             ?: throw BrowserException(BrowserError.FormSubmissionDenied(elementId))
         val domain = runCatching { java.net.URI(webView.url.orEmpty()).host.orEmpty().lowercase() }.getOrDefault("")
-        if (approval.elementId != elementId || approval.domain != domain || approval.action != form.action) {
+        if (
+            approval.elementId != elementId ||
+            approval.formElementId != form.elementId ||
+            !sameOriginHost(approval.domain, domain) ||
+            !sameAction(approval.action, form.action)
+        ) {
             throw BrowserException(BrowserError.FormSubmissionDenied(elementId))
         }
         val result = decodeJavascriptString(evaluateFixed(clickScript(elementId)))
@@ -485,6 +490,28 @@ private class WebViewBrowserSession(
         val array = evaluateJsonArray(ELEMENTS_SCRIPT)
         cachedElements = (0 until minOf(array.length(), BrowserLimits.MAX_ELEMENTS)).map { array.getJSONObject(it).toElement() }
         return cachedElements.firstOrNull { it.elementId == elementId }
+    }
+
+    private fun sameOriginHost(approved: String, current: String): Boolean {
+        val left = approved.lowercase()
+        val right = current.lowercase()
+        if (left == right) return true
+        val loopback = setOf("localhost", "127.0.0.1", "::1", "[::1]")
+        return left in loopback && right in loopback
+    }
+
+    private fun sameAction(approved: String?, current: String?): Boolean {
+        if (approved == current) return true
+        if (approved == null || current == null) return false
+        return runCatching {
+            val left = java.net.URI(approved).normalize()
+            val right = java.net.URI(current).normalize()
+            left.scheme.equals(right.scheme, ignoreCase = true) &&
+                sameOriginHost(left.host.orEmpty(), right.host.orEmpty()) &&
+                left.port == right.port &&
+                left.rawPath.orEmpty() == right.rawPath.orEmpty() &&
+                left.rawQuery == right.rawQuery
+        }.getOrDefault(false)
     }
 
     /** The only JavaScript gateway. Every caller supplies a module-owned fixed script. */

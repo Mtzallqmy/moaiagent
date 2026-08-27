@@ -110,7 +110,10 @@ private class ClickAgentTool(sessions: BrowserSessionService, private val assess
         val target = target(input, context)
         val result = if (target.form != null) {
             val domain = safeDomain(target.session.getCurrentUrl())
-            target.session.submitForm(target.element.elementId, FormSubmissionApproval(target.element.elementId, domain, target.form.action))
+            target.session.submitForm(
+                target.element.elementId,
+                FormSubmissionApproval(target.element.elementId, target.form.elementId, domain, target.form.action)
+            )
         } else target.session.clickElement(target.element.elementId)
         result.result(if (target.form != null) "Browser form submitted" else "Browser element clicked")
     }.getOrElse(::failure)

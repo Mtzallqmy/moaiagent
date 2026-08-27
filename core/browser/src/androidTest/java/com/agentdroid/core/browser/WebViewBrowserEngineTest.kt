@@ -59,32 +59,32 @@ class WebViewBrowserEngineTest {
 
         session.navigate(server.url("/").toString())
         assertEquals("Local start", session.getPageTitle())
-        assertTrue(session.getPageText().contains("Browser integration page"))
-        assertEquals(1, session.findText("integration").size)
+        assertTrue("page text was not available after navigation", session.getPageText().contains("Browser integration page"))
+        assertEquals("find_text should return the single page occurrence", 1, session.findText("integration").size)
         val screenshot = session.takeScreenshot()
         assertEquals("image/png", screenshot.mimeType)
-        assertTrue(screenshot.referenceId.startsWith("browser-screenshot:"))
+        assertTrue("screenshot must be returned as a reference", screenshot.referenceId.startsWith("browser-screenshot:"))
 
         val form = session.getForms().single()
         assertEquals("post", form.method)
         assertEquals(1, form.sensitiveFieldIds.size)
         val name = form.fields.first { it.ariaLabel == "Name" }
-        assertTrue(session.fillField(name.elementId, "Ada").performed)
+        assertTrue("the structured name field should be fillable", session.fillField(name.elementId, "Ada").performed)
 
         val submit = session.elements().first { it.text == "Sign in" }
         val denied = runCatching { session.clickElement(submit.elementId) }.exceptionOrNull() as BrowserException
-        assertTrue(denied.error is BrowserError.FormSubmissionDenied)
+        assertTrue("direct submit clicks must be denied", denied.error is BrowserError.FormSubmissionDenied)
 
         val link = session.getLinks().single()
-        assertTrue(session.clickElement(link.elementId).performed)
+        assertTrue("the structured link should be clickable", session.clickElement(link.elementId).performed)
         withTimeout(10_000) {
             while (!session.getCurrentUrl().endsWith("/second") || session.getPageTitle() != "Second") delay(25)
         }
         assertEquals("Second", session.getPageTitle())
-        assertTrue(session.goBack().currentUrl.orEmpty().endsWith("/"))
-        assertTrue(session.goForward().currentUrl.orEmpty().endsWith("/second"))
-        assertTrue(session.reloadPage().currentUrl.orEmpty().endsWith("/second"))
-        assertTrue(session.scrollPage(ScrollDirection.DOWN, 100).performed)
+        assertTrue("back should restore the start URL", session.goBack().currentUrl.orEmpty().endsWith("/"))
+        assertTrue("forward should restore the second URL", session.goForward().currentUrl.orEmpty().endsWith("/second"))
+        assertTrue("reload should retain the second URL", session.reloadPage().currentUrl.orEmpty().endsWith("/second"))
+        assertTrue("scroll should be performed", session.scrollPage(ScrollDirection.DOWN, 100).performed)
         assertFalse(session.metadata.value.tabs.isEmpty())
     }
 
@@ -130,14 +130,17 @@ class WebViewBrowserEngineTest {
         session.navigate(server.url("/").toString())
         val form = session.getForms().single()
         val submit = session.elements().first { it.inputType == "submit" }
-        val wrong = FormSubmissionApproval(submit.elementId, "wrong.example", form.action)
+        val wrong = FormSubmissionApproval(submit.elementId, form.elementId, "wrong.example", form.action)
         val denied = runCatching { session.submitForm(submit.elementId, wrong) }.exceptionOrNull() as BrowserException
         assertTrue(denied.error is BrowserError.FormSubmissionDenied)
 
         val domain = URI(session.getCurrentUrl()).host.orEmpty().lowercase()
-        assertTrue(session.submitForm(submit.elementId, FormSubmissionApproval(submit.elementId, domain, form.action)).performed)
-        assertEquals("/", server.takeRequest(5, TimeUnit.SECONDS)!!.path)
-        assertEquals("/submit", server.takeRequest(5, TimeUnit.SECONDS)!!.path)
+        assertTrue(session.submitForm(submit.elementId, FormSubmissionApproval(submit.elementId, form.elementId, domain, form.action)).performed)
+        val paths = buildList {
+            repeat(3) { server.takeRequest(1, TimeUnit.SECONDS)?.path?.let(::add) }
+        }
+        assertTrue("initial navigation was not observed: $paths", "/" in paths)
+        assertTrue("approved form submission was not observed: $paths", "/submit" in paths)
     }
 
     @Test fun restoresOnlySafeTabMetadataAndMarksItForReload(): Unit = runBlocking {

@@ -65,6 +65,7 @@ data class FormSubmissionPreview(
 /** Capability created only by trusted in-module adapters after an allow-once decision. */
 class FormSubmissionApproval internal constructor(
     internal val elementId: String,
+    internal val formElementId: String,
     internal val domain: String,
     internal val action: String?
 )
