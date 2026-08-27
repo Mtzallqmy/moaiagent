@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DelegateTaskToolTest {
-    @Test fun delegatesStructuredTaskAndReturnsReferences() = runBlocking {
+    @Test fun delegatesStructuredTaskAndReturnsReferences(): Unit = runBlocking {
         var captured: SubagentTask? = null
         val coordinator = object : SubagentCoordinator {
             override val timeline = MutableStateFlow<List<SubagentTimelineItem>>(emptyList())
@@ -44,7 +44,7 @@ class DelegateTaskToolTest {
         assertEquals(RiskLevel.EXTERNAL, tool.effectiveRisk(input, context))
     }
 
-    @Test fun rejectsUnknownRoleAndBlankTask() = runBlocking {
+    @Test fun rejectsUnknownRoleAndBlankTask(): Unit = runBlocking {
         val never = object : SubagentCoordinator {
             override val timeline = MutableStateFlow<List<SubagentTimelineItem>>(emptyList())
             override suspend fun delegate(task: SubagentTask) = error("must not run")

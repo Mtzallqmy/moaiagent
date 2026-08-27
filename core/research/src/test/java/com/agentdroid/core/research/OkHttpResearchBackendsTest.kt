@@ -26,7 +26,7 @@ class OkHttpResearchBackendsTest {
     }
 
     @Test
-    fun `fetcher follows bounded safe redirect and extracts readable html`() = runBlocking {
+    fun `fetcher follows bounded safe redirect and extracts readable html`(): Unit = runBlocking {
         server.enqueue(MockResponse().setResponseCode(302).addHeader("Location", "/article"))
         server.enqueue(
             MockResponse().addHeader("Content-Type", "text/html; charset=utf-8").setBody(
@@ -49,18 +49,18 @@ class OkHttpResearchBackendsTest {
     }
 
     @Test(expected = UnsafeResearchUrl::class)
-    fun `fetcher rejects unsafe scheme before request`() = runBlocking {
+    fun `fetcher rejects unsafe scheme before request`(): Unit = runBlocking {
         OkHttpResearchSourceFetcher().fetch("file:///data/data/secret", 100)
     }
 
     @Test(expected = UnsafeResearchUrl::class)
-    fun `fetcher rejects unsafe redirect target`() = runBlocking {
+    fun `fetcher rejects unsafe redirect target`(): Unit = runBlocking {
         server.enqueue(MockResponse().setResponseCode(302).addHeader("Location", "file:///data/data/secret"))
         OkHttpResearchSourceFetcher().fetch(server.url("/redirect").toString(), 100)
     }
 
     @Test(expected = ResearchSourceUnavailable::class)
-    fun `fetcher enforces redirect budget`() = runBlocking {
+    fun `fetcher enforces redirect budget`(): Unit = runBlocking {
         server.enqueue(MockResponse().setResponseCode(302).addHeader("Location", "/two"))
         server.enqueue(MockResponse().setResponseCode(302).addHeader("Location", "/three"))
         val fetcher = OkHttpResearchSourceFetcher(OkHttpClient(), ResearchHttpLimits(maxRedirects = 1))
@@ -68,20 +68,20 @@ class OkHttpResearchBackendsTest {
     }
 
     @Test(expected = ResearchSourceUnavailable::class)
-    fun `fetcher rejects response exceeding byte budget`() = runBlocking {
+    fun `fetcher rejects response exceeding byte budget`(): Unit = runBlocking {
         server.enqueue(MockResponse().addHeader("Content-Type", "text/plain").setBody("x".repeat(101)))
         val fetcher = OkHttpResearchSourceFetcher(OkHttpClient(), ResearchHttpLimits(maxBodyBytes = 100))
         fetcher.fetch(server.url("/large").toString(), 1_000)
     }
 
     @Test(expected = ResearchSourceUnavailable::class)
-    fun `fetcher rejects binary content`() = runBlocking {
+    fun `fetcher rejects binary content`(): Unit = runBlocking {
         server.enqueue(MockResponse().addHeader("Content-Type", "application/octet-stream").setBody("binary"))
         OkHttpResearchSourceFetcher().fetch(server.url("/binary").toString(), 100)
     }
 
     @Test
-    fun `duckduckgo provider parses abstract and nested related topics within limit`() = runBlocking {
+    fun `duckduckgo provider parses abstract and nested related topics within limit`(): Unit = runBlocking {
         server.enqueue(
             MockResponse().addHeader("Content-Type", "application/json").setBody(
                 """
@@ -112,7 +112,7 @@ class OkHttpResearchBackendsTest {
     }
 
     @Test
-    fun `duckduckgo provider discards unsafe and duplicate results`() = runBlocking {
+    fun `duckduckgo provider discards unsafe and duplicate results`(): Unit = runBlocking {
         server.enqueue(MockResponse().setBody(
             """{"RelatedTopics":[
                 {"FirstURL":"javascript:alert(1)","Text":"Unsafe"},
@@ -127,7 +127,7 @@ class OkHttpResearchBackendsTest {
     }
 
     @Test(expected = ResearchSourceUnavailable::class)
-    fun `duckduckgo provider refuses redirects`() = runBlocking {
+    fun `duckduckgo provider refuses redirects`(): Unit = runBlocking {
         server.enqueue(MockResponse().setResponseCode(302).addHeader("Location", "/elsewhere"))
         DuckDuckGoInstantAnswerProvider(OkHttpClient(), server.url("/").toString()).search("query", 3)
     }

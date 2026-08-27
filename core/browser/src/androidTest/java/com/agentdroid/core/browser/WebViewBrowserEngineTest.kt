@@ -49,7 +49,7 @@ class WebViewBrowserEngineTest {
         server.shutdown()
     }
 
-    @Test fun navigateReadFindFillClickAndHistoryAgainstLocalPage() = runBlocking {
+    @Test fun navigateReadFindFillClickAndHistoryAgainstLocalPage(): Unit = runBlocking {
         val session = engine.createSession(BrowserSessionRequest("workspace", "conversation"))
         val view = requireNotNull(engine.surface(session.metadata.value.sessionId)).view
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -88,14 +88,14 @@ class WebViewBrowserEngineTest {
         assertFalse(session.metadata.value.tabs.isEmpty())
     }
 
-    @Test fun unsafeNavigationNeverReachesWebView() = runBlocking {
+    @Test fun unsafeNavigationNeverReachesWebView(): Unit = runBlocking {
         val session = engine.createSession(BrowserSessionRequest("workspace", "conversation"))
         val failure = runCatching { session.navigate("file:///sdcard/secret") }.exceptionOrNull() as BrowserException
         assertTrue(failure.error is BrowserError.UnsafeUrl)
         assertEquals("", session.getCurrentUrl())
     }
 
-    @Test fun createsSwitchesAndClosesIndependentTabs() = runBlocking {
+    @Test fun createsSwitchesAndClosesIndependentTabs(): Unit = runBlocking {
         val session = engine.createSession(BrowserSessionRequest("workspace", "conversation"))
         val firstId = session.metadata.value.activeTabId
         val firstSurface = requireNotNull(engine.surface(session.metadata.value.sessionId, firstId)).view
@@ -120,7 +120,7 @@ class WebViewBrowserEngineTest {
         assertTrue(lastTabFailure.error is BrowserError.LastTab)
     }
 
-    @Test fun formSubmitNeedsBoundOneTimeApproval() = runBlocking {
+    @Test fun formSubmitNeedsBoundOneTimeApproval(): Unit = runBlocking {
         val session = engine.createSession(BrowserSessionRequest("workspace", "conversation"))
         val view = requireNotNull(engine.surface(session.metadata.value.sessionId)).view
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -140,7 +140,7 @@ class WebViewBrowserEngineTest {
         assertEquals("/submit", server.takeRequest(5, TimeUnit.SECONDS)!!.path)
     }
 
-    @Test fun restoresOnlySafeTabMetadataAndMarksItForReload() = runBlocking {
+    @Test fun restoresOnlySafeTabMetadataAndMarksItForReload(): Unit = runBlocking {
         val safe = BrowserTabMetadata("safe-tab", "Saved", server.url("/saved").toString())
         val unsafe = BrowserTabMetadata("unsafe-tab", "Unsafe", "file:///sdcard/token")
         val session = engine.createSession(

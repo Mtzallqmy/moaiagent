@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SubagentCoordinatorTest {
-    @Test fun mainAgentResearchThenReviewPipelineProducesFinalResult() = runBlocking {
+    @Test fun mainAgentResearchThenReviewPipelineProducesFinalResult(): Unit = runBlocking {
         val factory = SubagentFactory { profile -> object : Subagent {
             override val role = profile.role
             override suspend fun execute(task: SubagentTask, scope: SubagentExecutionScope): SubagentResultPayload = when (role) {
@@ -38,7 +38,7 @@ class SubagentCoordinatorTest {
         assertEquals("Final reviewed answer", review.summary)
     }
 
-    @Test fun mainDelegatesResearchThenResearchDelegatesReview() = runBlocking {
+    @Test fun mainDelegatesResearchThenResearchDelegatesReview(): Unit = runBlocking {
         lateinit var researchTask: SubagentTask
         val factory = SubagentFactory { profile ->
             when (profile.role) {
@@ -86,7 +86,7 @@ class SubagentCoordinatorTest {
         assertTrue(coordinator.timeline.value.all { it.status == SubagentStatus.COMPLETED })
     }
 
-    @Test fun retryThenSuccessReturnsAttemptCount() = runBlocking {
+    @Test fun retryThenSuccessReturnsAttemptCount(): Unit = runBlocking {
         var calls = 0
         val factory = SubagentFactory { profile -> object : Subagent {
             override val role = profile.role
@@ -104,7 +104,7 @@ class SubagentCoordinatorTest {
         assertEquals("Recovered", result.summary)
     }
 
-    @Test fun failureCanFallbackToReviewRole() = runBlocking {
+    @Test fun failureCanFallbackToReviewRole(): Unit = runBlocking {
         val factory = SubagentFactory { profile -> object : Subagent {
             override val role = profile.role
             override suspend fun execute(task: SubagentTask, scope: SubagentExecutionScope): SubagentResultPayload {
@@ -124,7 +124,7 @@ class SubagentCoordinatorTest {
         assertEquals(2, result.attempts)
     }
 
-    @Test fun permanentFailureReturnsSafeFailureSummaryWithoutReasoning() = runBlocking {
+    @Test fun permanentFailureReturnsSafeFailureSummaryWithoutReasoning(): Unit = runBlocking {
         val coordinator = coordinator(
             SubagentFactory { profile -> object : Subagent {
                 override val role = profile.role
@@ -143,7 +143,7 @@ class SubagentCoordinatorTest {
         assertFalse(timeline.toString().contains("instructions="))
     }
 
-    @Test fun rejectsDepthAndTotalLimits() = runBlocking {
+    @Test fun rejectsDepthAndTotalLimits(): Unit = runBlocking {
         val limitedFactory = SubagentFactory { profile -> object : Subagent {
             override val role = profile.role
             override suspend fun execute(task: SubagentTask, scope: SubagentExecutionScope): SubagentResultPayload {
@@ -161,7 +161,7 @@ class SubagentCoordinatorTest {
         assertTrue(runCatching { depthCoordinator.delegate(tooDeep) }.exceptionOrNull() is DelegationDepthExceeded)
     }
 
-    @Test fun rejectsConcurrentExecutionPastLimit() = runBlocking {
+    @Test fun rejectsConcurrentExecutionPastLimit(): Unit = runBlocking {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val factory = SubagentFactory { profile -> object : Subagent {
@@ -181,7 +181,7 @@ class SubagentCoordinatorTest {
         assertEquals(SubagentStatus.COMPLETED, first.await().status)
     }
 
-    @Test fun roleToolWhitelistAndToolBudgetAreEnforced() = runBlocking {
+    @Test fun roleToolWhitelistAndToolBudgetAreEnforced(): Unit = runBlocking {
         var gatewayCalls = 0
         val deniedFactory = SubagentFactory { profile -> object : Subagent {
             override val role = profile.role
@@ -229,7 +229,7 @@ class SubagentCoordinatorTest {
         assertFalse(subset.sections.containsKey(ContextSection.SELECTED_FILES))
     }
 
-    @Test fun taskDurationIsBoundedAndReported() = runBlocking {
+    @Test fun taskDurationIsBoundedAndReported(): Unit = runBlocking {
         val slow = SubagentFactory { profile -> object : Subagent {
             override val role = profile.role
             override suspend fun execute(task: SubagentTask, scope: SubagentExecutionScope): SubagentResultPayload {
@@ -246,7 +246,7 @@ class SubagentCoordinatorTest {
         assertEquals(SubagentFailureCode.TIMED_OUT, result.failure?.code)
     }
 
-    @Test fun skillBindingAddsGuidanceButCannotExpandToolsByDefault() = runBlocking {
+    @Test fun skillBindingAddsGuidanceButCannotExpandToolsByDefault(): Unit = runBlocking {
         var observedProfile: SubagentProfile? = null
         val bindingRepository = InMemorySkillRoleBindingRepository(
             listOf(SkillRoleBinding("android-reviewer", SubagentRole.REVIEW, "Check Android lifecycle usage", setOf("run_command")))

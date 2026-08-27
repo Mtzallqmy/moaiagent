@@ -24,7 +24,7 @@ class DefaultResearchEngineTest {
     }
 
     @Test
-    fun `tracks retrieved sources through finding and finalized citations`() = runBlocking {
+    fun `tracks retrieved sources through finding and finalized citations`(): Unit = runBlocking {
         val ids = ArrayDeque(listOf("session", "source-a", "finding-a"))
         val engine = DefaultResearchEngine(provider, fetcher, now = { 123L }, newId = { ids.removeFirst() })
         val session = engine.start("Android Markdown libraries")
@@ -45,14 +45,14 @@ class DefaultResearchEngineTest {
     }
 
     @Test(expected = ResearchCitationError::class)
-    fun `rejects invented source references`() = runBlocking {
+    fun `rejects invented source references`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(provider, fetcher)
         val session = engine.start("query")
         engine.addFinding(session.id, "Unsupported claim", listOf("invented-source"))
     }
 
     @Test(expected = ResearchCitationError::class)
-    fun `rejects invented inline url even when source id is valid`() = runBlocking {
+    fun `rejects invented inline url even when source id is valid`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(provider, fetcher)
         val session = engine.start("query")
         val source = engine.openSource(session.id, "https://example.com/real")
@@ -60,7 +60,7 @@ class DefaultResearchEngineTest {
     }
 
     @Test(expected = ResearchCitationError::class)
-    fun `rejects agent supplied numeric citation markers`() = runBlocking {
+    fun `rejects agent supplied numeric citation markers`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(provider, fetcher)
         val session = engine.start("query")
         val source = engine.openSource(session.id, "https://example.com/real")
@@ -68,14 +68,14 @@ class DefaultResearchEngineTest {
     }
 
     @Test(expected = UnsafeResearchUrl::class)
-    fun `rejects non http sources before fetch`() = runBlocking {
+    fun `rejects non http sources before fetch`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(provider, fetcher)
         val session = engine.start("query")
         engine.openSource(session.id, "file:///etc/passwd")
     }
 
     @Test
-    fun `compare only names sources actually linked to each finding`() = runBlocking {
+    fun `compare only names sources actually linked to each finding`(): Unit = runBlocking {
         val ids = ArrayDeque(listOf("session", "source-a", "source-b", "finding-a", "finding-b"))
         val engine = DefaultResearchEngine(provider, fetcher, now = { 1L }, newId = { ids.removeFirst() })
         val session = engine.start("compare")
@@ -92,7 +92,7 @@ class DefaultResearchEngineTest {
     }
 
     @Test
-    fun `deduplicates a source by canonical url`() = runBlocking {
+    fun `deduplicates a source by canonical url`(): Unit = runBlocking {
         var fetchCount = 0
         val countingFetcher = object : ResearchSourceFetcher {
             override suspend fun fetch(url: String, maxChars: Int): FetchedResearchPage {

@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TaskStateMachineTest {
-    @Test fun `three step task reports actual progress and completes`() = runBlocking {
+    @Test fun `three step task reports actual progress and completes`(): Unit = runBlocking {
         val fixture = Fixture()
         var task = fixture.create()
         assertEquals(TaskStatus.PENDING, task.status)
@@ -24,7 +24,7 @@ class TaskStateMachineTest {
         assertTrue(task.plan.steps.all { it.status == TaskStatus.COMPLETED })
     }
 
-    @Test fun `cancel is terminal and cancels unfinished steps`() = runBlocking {
+    @Test fun `cancel is terminal and cancels unfinished steps`(): Unit = runBlocking {
         val fixture = Fixture()
         var task = fixture.create()
         task = fixture.engine.start(task.id, "workspace", task.plan.steps.first().id)
@@ -34,7 +34,7 @@ class TaskStateMachineTest {
         assertFails<TaskEngineException.InvalidTransition> { fixture.engine.resume(task.id, "workspace") }
     }
 
-    @Test fun `permission wait and pause resume do not forge step status`() = runBlocking {
+    @Test fun `permission wait and pause resume do not forge step status`(): Unit = runBlocking {
         val fixture = Fixture()
         var task = fixture.create()
         val step = task.plan.steps.first()
@@ -49,7 +49,7 @@ class TaskStateMachineTest {
         assertEquals(TaskStatus.RUNNING, task.status)
     }
 
-    @Test fun `failed step can retry only within its declared limit`() = runBlocking {
+    @Test fun `failed step can retry only within its declared limit`(): Unit = runBlocking {
         val fixture = Fixture(maxRetries = 1)
         var task = fixture.create()
         val step = task.plan.steps.first()
@@ -62,21 +62,21 @@ class TaskStateMachineTest {
         assertFails<TaskEngineException.RetryLimitReached> { fixture.engine.retry(task.id, "workspace", step.id) }
     }
 
-    @Test fun `optimistic revision rejects stale tool updates`() = runBlocking {
+    @Test fun `optimistic revision rejects stale tool updates`(): Unit = runBlocking {
         val fixture = Fixture()
         val task = fixture.create()
         fixture.engine.start(task.id, "workspace", expectedRevision = 0)
         assertFails<TaskEngineException.RevisionConflict> { fixture.engine.cancel(task.id, "workspace", expectedRevision = 0) }
     }
 
-    @Test fun `workspace scope prevents cross workspace reads and writes`() = runBlocking {
+    @Test fun `workspace scope prevents cross workspace reads and writes`(): Unit = runBlocking {
         val fixture = Fixture()
         val task = fixture.create()
         assertEquals(null, fixture.engine.get(task.id, "other"))
         assertFails<TaskEngineException.NotFound> { fixture.engine.cancel(task.id, "other") }
     }
 
-    @Test fun `steps cannot be started out of plan order`() = runBlocking {
+    @Test fun `steps cannot be started out of plan order`(): Unit = runBlocking {
         val fixture = Fixture()
         val task = fixture.create()
         assertFails<TaskEngineException.InvalidTransition> {
@@ -84,7 +84,7 @@ class TaskStateMachineTest {
         }
     }
 
-    @Test fun `planner can revise remaining actions between steps without hidden reasoning`() = runBlocking {
+    @Test fun `planner can revise remaining actions between steps without hidden reasoning`(): Unit = runBlocking {
         val fixture = Fixture()
         var task = fixture.create()
         val firstStepId = task.plan.steps.first().id

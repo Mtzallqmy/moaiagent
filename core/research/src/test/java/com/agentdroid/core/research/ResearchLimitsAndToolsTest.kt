@@ -24,7 +24,7 @@ class ResearchLimitsAndToolsTest {
     }
 
     @Test
-    fun `bounds provider results excerpts and relevance`() = runBlocking {
+    fun `bounds provider results excerpts and relevance`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(
             provider, fetcher,
             limits = ResearchLimits(maxSources = 2, maxSearchResults = 3, maxExcerptChars = 12, maxFetchedTextChars = 30)
@@ -39,7 +39,7 @@ class ResearchLimitsAndToolsTest {
     }
 
     @Test(expected = ResearchLimitExceeded::class)
-    fun `enforces maximum source count`() = runBlocking {
+    fun `enforces maximum source count`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(provider, fetcher, limits = ResearchLimits(maxSources = 1))
         val session = engine.start("bounded")
         engine.openSource(session.id, "https://example.com/1")
@@ -47,7 +47,7 @@ class ResearchLimitsAndToolsTest {
     }
 
     @Test(expected = ResearchLimitExceeded::class)
-    fun `enforces maximum finding count`() = runBlocking {
+    fun `enforces maximum finding count`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(provider, fetcher, limits = ResearchLimits(maxFindings = 1))
         val session = engine.start("bounded")
         val source = engine.openSource(session.id, "https://example.com/1")
@@ -56,7 +56,7 @@ class ResearchLimitsAndToolsTest {
     }
 
     @Test(expected = ResearchLimitExceeded::class)
-    fun `enforces total extracted text budget`() = runBlocking {
+    fun `enforces total extracted text budget`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(
             provider, fetcher,
             limits = ResearchLimits(maxFindingChars = 5, maxTotalFindingChars = 6)
@@ -68,7 +68,7 @@ class ResearchLimitsAndToolsTest {
     }
 
     @Test
-    fun `typed tools execute complete provider fetch extract compare finalize flow`() = runBlocking {
+    fun `typed tools execute complete provider fetch extract compare finalize flow`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(provider, fetcher)
         val tools = createResearchTools(engine)
         val session = tools.start.execute(ResearchStartInput("libraries"))
@@ -82,7 +82,7 @@ class ResearchLimitsAndToolsTest {
     }
 
     @Test
-    fun `agent adapters expose real tools and classify network operations external`() = runBlocking {
+    fun `agent adapters expose real tools and classify network operations external`(): Unit = runBlocking {
         val engine = DefaultResearchEngine(provider, fetcher)
         val registry = ToolRegistry(createResearchAgentTools(engine))
         val context = ToolContext("workspace", "conversation", "agent-session", AgentMode.AGENT)

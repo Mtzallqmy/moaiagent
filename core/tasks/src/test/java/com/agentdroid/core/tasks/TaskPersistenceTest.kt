@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TaskPersistenceTest {
-    @Test fun `restore marks interrupted execution as recovery required`() = runBlocking {
+    @Test fun `restore marks interrupted execution as recovery required`(): Unit = runBlocking {
         val store = FakePersistence()
         val ids = sequentialIds()
         val planner = ConciseTaskPlanner(ids)
@@ -26,7 +26,7 @@ class TaskPersistenceTest {
         assertEquals(TaskEventType.RECOVERY_REQUIRED, second.events(task.id, "w").last().type)
     }
 
-    @Test fun `repository returns immutable event history`() = runBlocking {
+    @Test fun `repository returns immutable event history`(): Unit = runBlocking {
         val ids = sequentialIds()
         val repo = InMemoryTaskRepository(TaskClock { 10 }, ids)
         val engine = TaskEngine(repo, ConciseTaskPlanner(ids), TaskClock { 10 })

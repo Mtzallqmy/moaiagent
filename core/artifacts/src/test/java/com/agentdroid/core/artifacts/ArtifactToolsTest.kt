@@ -26,7 +26,7 @@ class ArtifactToolsTest {
     }
     @After fun tearDown() { root.deleteRecursively() }
 
-    @Test fun toolsCreateListReadAndClassifyDeleteAsDestructive() = runBlocking {
+    @Test fun toolsCreateListReadAndClassifyDeleteAsDestructive(): Unit = runBlocking {
         val registry = createArtifactToolRegistry(ArtifactServices { repository })
         val create = ToolCall("call-1", "create_artifact", buildJsonObject {
             put("type", "MARKDOWN"); put("title", "Report"); put("content", "# Hello")

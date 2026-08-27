@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ModelBackedSubagentTest {
-    @Test fun modelAndToolRegistryAdaptersReceiveOnlyBoundedRoleContract() = runBlocking {
+    @Test fun modelAndToolRegistryAdaptersReceiveOnlyBoundedRoleContract(): Unit = runBlocking {
         val requests = mutableListOf<SubagentModelRequest>()
         var turn = 0
         val model = SubagentModelGateway { request ->

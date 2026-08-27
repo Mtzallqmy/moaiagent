@@ -19,7 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TaskToolsIntegrationTest {
-    @Test fun `agent tools execute a real three step workflow`() = runBlocking {
+    @Test fun `agent tools execute a real three step workflow`(): Unit = runBlocking {
         val fixture = Fixture()
         val create = fixture.call("create_task", buildJsonObject {
             put("title", "Markdown research"); put("summary", "Compare libraries")
@@ -39,7 +39,7 @@ class TaskToolsIntegrationTest {
         assertEquals("100", task["progress"]!!.jsonPrimitive.content)
     }
 
-    @Test fun `tools reject forged transition and expose permission waiting`() = runBlocking {
+    @Test fun `tools reject forged transition and expose permission waiting`(): Unit = runBlocking {
         val fixture = Fixture()
         val created = fixture.createOneStep()
         val taskId = created.first
@@ -51,7 +51,7 @@ class TaskToolsIntegrationTest {
         assertEquals("WAITING_PERMISSION", waiting.output["status"]!!.jsonPrimitive.content)
     }
 
-    @Test fun `agent tools handle failure retry and cancellation through validated actions`() = runBlocking {
+    @Test fun `agent tools handle failure retry and cancellation through validated actions`(): Unit = runBlocking {
         val fixture = Fixture()
         val (taskId, stepId) = fixture.createOneStep()
         fixture.call("update_task", obj("taskId" to taskId, "action" to "start", "stepId" to stepId))

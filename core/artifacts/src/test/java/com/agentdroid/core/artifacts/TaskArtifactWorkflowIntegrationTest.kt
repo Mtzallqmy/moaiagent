@@ -29,7 +29,7 @@ class TaskArtifactWorkflowIntegrationTest {
         workspace.deleteRecursively()
     }
 
-    @Test fun `three step task creates attaches and retains artifact before completion`() = runBlocking {
+    @Test fun `three step task creates attaches and retains artifact before completion`(): Unit = runBlocking {
         val taskSequence = AtomicInteger()
         val taskIds = TaskIdGenerator { "task-id-${taskSequence.incrementAndGet()}" }
         val clock = TaskClock { 1_000L + taskSequence.get() }
