@@ -117,7 +117,6 @@ private class LocalRunningProcess(
                 delay(25)
             }
             runCatching { withContext(Dispatchers.IO) { process.waitFor() } }
-            stdoutJob.join(); stderrJob.join()
             val code = runCatching { process.exitValue() }.getOrNull()
             _exitCode.value = code
             val finalStatus = when {
@@ -127,6 +126,9 @@ private class LocalRunningProcess(
                 else -> ProcessStatus.EXITED
             }
             _status.value = finalStatus
+            // Publish process termination before draining inherited pipes. A child spawned by a shell
+            // may temporarily keep stdout/stderr descriptors open even after the managed process exits.
+            stdoutJob.join(); stderrJob.join()
             val result = ProcessResult(
                 stdout = LogRedactor.redact(stdoutBuffer.text()),
                 stderr = LogRedactor.redact(stderrBuffer.text()),
