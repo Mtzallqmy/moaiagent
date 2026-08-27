@@ -15,6 +15,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines)
     implementation(libs.serialization.json)
     testImplementation(project(":core:runtime"))
+    testImplementation(project(":core:model"))
     testImplementation("junit:junit:4.13.2")
     testImplementation(libs.kotlinx.coroutines)
 }
