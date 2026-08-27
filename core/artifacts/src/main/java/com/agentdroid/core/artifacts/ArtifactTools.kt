@@ -154,11 +154,14 @@ private fun JsonObject.requiredString(key: String): String = string(key)?.takeIf
 private fun JsonObject.artifactType(key: String) = parseType(requiredString(key))
 private fun parseType(value: String): ArtifactType = runCatching { ArtifactType.valueOf(value.trim().uppercase()) }
     .getOrElse { throw IllegalArgumentException("Unsupported artifact type: $value") }
-private fun JsonObject.references(key: String): List<SourceReference> = ((this[key] as? JsonArray) ?: return emptyList()).mapIndexed { index, element ->
-    val source = element as? JsonObject ?: throw IllegalArgumentException("$key[$index] must be an object")
-    SourceReference(
-        researchSessionId = source.requiredString("researchSessionId"), sourceId = source.requiredString("sourceId"),
-        url = source.requiredString("url"), title = source.string("title"),
-        findingIds = (source["findingIds"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
-    )
+private fun JsonObject.references(key: String): List<SourceReference> {
+    val values = this[key] as? JsonArray ?: return emptyList()
+    return values.mapIndexed { index, element ->
+        val source = element as? JsonObject ?: throw IllegalArgumentException("$key[$index] must be an object")
+        SourceReference(
+            researchSessionId = source.requiredString("researchSessionId"), sourceId = source.requiredString("sourceId"),
+            url = source.requiredString("url"), title = source.string("title"),
+            findingIds = (source["findingIds"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
+        )
+    }
 }
