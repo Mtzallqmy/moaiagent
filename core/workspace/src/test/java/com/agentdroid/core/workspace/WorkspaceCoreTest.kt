@@ -20,7 +20,7 @@ class WorkspaceCoreTest {
         listOf("../secret", "/system/build.prop", "file:///tmp/a", "content://authority/a", "intent:test").forEach { path ->
             assertError(AgentErrorCode.WORKSPACE_VIOLATION) { fs.resolve(path) }
         }
-        Files.writeString(outside.resolve("secret.txt"), "secret")
+        outside.resolve("secret.txt").toFile().writeText("secret")
         Files.createSymbolicLink(root.resolve("escape"), outside)
         assertError(AgentErrorCode.WORKSPACE_VIOLATION) { fs.resolve("escape/secret.txt", true) }
     }
