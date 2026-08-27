@@ -1,6 +1,7 @@
 package com.agentdroid.core.agent
 
 import com.agentdroid.core.model.Usage
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -176,8 +177,13 @@ class ToolRegistry(tools: Iterable<AgentTool> = emptyList()) {
     suspend fun effectiveRisk(call: ToolCall, context: ToolContext): Result<RiskLevel> {
         val tool = entries[call.name] ?: return Result.failure(ToolRegistryException(AgentError.toolNotFound(call.name)))
         validate(tool.definition.inputSchema, call.input)?.let { return Result.failure(ToolRegistryException(it)) }
-        val risk = runCatching { tool.effectiveRisk(call.input, context.copy(toolCallId = call.id)) }
-            .getOrElse { return Result.failure(it) }
+        val risk = try {
+            tool.effectiveRisk(call.input, context.copy(toolCallId = call.id))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            return Result.failure(failure)
+        }
         validateMode(tool, context.mode, risk)?.let { return Result.failure(ToolRegistryException(it)) }
         return Result.success(risk)
     }
@@ -189,10 +195,21 @@ class ToolRegistry(tools: Iterable<AgentTool> = emptyList()) {
     suspend fun preview(call: ToolCall, context: ToolContext): Result<ToolPreview?> {
         val tool = entries[call.name] ?: return Result.failure(ToolRegistryException(AgentError.toolNotFound(call.name)))
         validate(tool.definition.inputSchema, call.input)?.let { return Result.failure(ToolRegistryException(it)) }
-        val risk = runCatching { tool.effectiveRisk(call.input, context.copy(toolCallId = call.id)) }
-            .getOrElse { return Result.failure(it) }
+        val risk = try {
+            tool.effectiveRisk(call.input, context.copy(toolCallId = call.id))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            return Result.failure(failure)
+        }
         validateMode(tool, context.mode, risk)?.let { return Result.failure(ToolRegistryException(it)) }
-        return runCatching { tool.preview(call.input, context.copy(toolCallId = call.id)) }
+        return try {
+            Result.success(tool.preview(call.input, context.copy(toolCallId = call.id)))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            Result.failure(failure)
+        }
     }
 
     suspend fun execute(call: ToolCall, context: ToolContext): ToolResult {
@@ -202,6 +219,8 @@ class ToolRegistry(tools: Iterable<AgentTool> = emptyList()) {
             val risk = tool.effectiveRisk(call.input, context.copy(toolCallId = call.id))
             validateMode(tool, context.mode, risk)?.let { return ToolResult.failure(it) }
             tool.execute(call.input, context.copy(toolCallId = call.id))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (failure: ToolRegistryException) {
             ToolResult.failure(failure.agentError)
         } catch (failure: Throwable) {
