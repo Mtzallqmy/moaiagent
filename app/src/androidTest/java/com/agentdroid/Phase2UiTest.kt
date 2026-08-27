@@ -5,7 +5,6 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -113,7 +112,7 @@ class Phase2UiTest {
         composeRule.onNodeWithText("PROPOSED").performClick()
         composeRule.onNodeWithTag("diff_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("diff_reject").performClick()
-        composeRule.waitUntil(5_000) { container.changeSetManager(workspaceId).get(first.id)?.status?.name == "REJECTED" }
+        composeRule.waitUntil(5_000) { runBlocking { container.changeSetManager(workspaceId).get(first.id)?.status?.name == "REJECTED" } }
         assertEquals("REJECTED", container.changeSetManager(workspaceId).get(first.id)?.status?.name)
 
         composeRule.onNodeWithContentDescription("Back").performClick()
@@ -128,7 +127,7 @@ class Phase2UiTest {
         composeRule.onNodeWithTag("diff_accept").performClick()
         composeRule.waitUntil(5_000) { fs.read("sample.kt").content?.contains("43") == true }
         composeRule.onNodeWithTag("diff_revert").performClick()
-        composeRule.waitUntil(5_000) { container.changeSetManager(workspaceId).get(second.id)?.status?.name == "REVERTED" }
+        composeRule.waitUntil(5_000) { runBlocking { container.changeSetManager(workspaceId).get(second.id)?.status?.name == "REVERTED" } }
         assertTrue(fs.read("sample.kt").content.orEmpty().contains("41"))
     }
 }
