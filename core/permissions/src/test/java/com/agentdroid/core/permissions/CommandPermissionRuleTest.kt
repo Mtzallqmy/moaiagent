@@ -23,7 +23,7 @@ class CommandPermissionRuleTest {
         assertEquals(2, prompts)
     }
 
-    @Test fun unsafeWildcardCannotBePersisted() = runBlocking {
+    @Test fun unsafeWildcardCannotBePersisted() {
         val engine = PermissionEngine(InMemoryPermissionRuleStore(), PermissionPrompter { PermissionResponse(PermissionDecision.DENY) })
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
             runBlocking { engine.setAlways("run_command:*", "ws", PermissionDecision.ALLOW) }
