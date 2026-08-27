@@ -63,7 +63,7 @@ private class GitDiffTool(services: GitServices) : GitTool(services) {
         val staged = input.bool("staged") ?: false
         val maxChars = (input["maxChars"]?.jsonPrimitive?.intOrNull ?: 100_000).coerceIn(1_000, 200_000)
         return services.engine.diff(root, path, staged, maxChars).fold(
-            onSuccess = { d -> ToolResult.success("Git diff: ${d.files.size} files", buildJsonObject { put("gitAction", "diff"); put("patch", d.patch); put("files", buildJsonArray { d.files.forEach(::add) }); put("staged", staged); put("truncated", d.truncated) }, truncated = d.truncated) },
+            onSuccess = { d -> ToolResult.success("Git diff: ${d.files.size} files", buildJsonObject { put("gitAction", "diff"); put("patch", d.patch); put("files", buildJsonArray { d.files.forEach { add(JsonPrimitive(it)) } }); put("staged", staged); put("truncated", d.truncated) }, truncated = d.truncated) },
             onFailure = { failure("diff", it) }
         )
     }
@@ -117,7 +117,7 @@ private class GitAddTool(services: GitServices) : GitTool(services) {
         val root = root(context); if (!services.engine.isRepository(root)) return notRepo()
         val paths = input.strings("paths")
         return services.engine.add(root, paths).fold(
-            onSuccess = { ToolResult.success("Staged ${paths.size} paths", buildJsonObject { put("gitAction", "add"); put("paths", buildJsonArray { paths.forEach(::add) }) }) },
+            onSuccess = { ToolResult.success("Staged ${paths.size} paths", buildJsonObject { put("gitAction", "add"); put("paths", buildJsonArray { paths.forEach { add(JsonPrimitive(it)) } }) }) },
             onFailure = { failure("add", it) }
         )
     }
@@ -151,7 +151,7 @@ private class GitRestoreTool(services: GitServices) : GitTool(services) {
         val root = root(context); if (!services.engine.isRepository(root)) return notRepo()
         val paths = input.strings("paths"); val staged = input.bool("staged") ?: false
         return services.engine.restore(root, paths, staged).fold(
-            onSuccess = { ToolResult.success(if (staged) "Paths unstaged" else "Paths restored", buildJsonObject { put("gitAction", "restore"); put("staged", staged); put("paths", buildJsonArray { paths.forEach(::add) }) }) },
+            onSuccess = { ToolResult.success(if (staged) "Paths unstaged" else "Paths restored", buildJsonObject { put("gitAction", "restore"); put("staged", staged); put("paths", buildJsonArray { paths.forEach { add(JsonPrimitive(it)) } }) }) },
             onFailure = { failure("restore", it) }
         )
     }
@@ -171,9 +171,9 @@ private fun statusJson(s: GitStatus) = buildJsonObject {
     put("gitAction", "status"); put("initialized", s.initialized); s.branch?.let { put("branch", it) }; put("clean", s.clean)
     put("modified", array(s.modified)); put("added", array(s.added)); put("deleted", array(s.deleted)); put("untracked", array(s.untracked)); put("staged", array(s.staged)); put("conflicting", array(s.conflicting))
 }
-private fun array(values: List<String>) = buildJsonArray { values.forEach(::add) }
+private fun array(values: List<String>) = buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }
 private fun schema(required: List<String> = emptyList(), fields: Map<String, String> = emptyMap()) = buildJsonObject {
-    put("type", "object"); put("properties", buildJsonObject { fields.forEach { (key, type) -> put(key, buildJsonObject { put("type", type) }) } }); if (required.isNotEmpty()) put("required", buildJsonArray { required.forEach(::add) })
+    put("type", "object"); put("properties", buildJsonObject { fields.forEach { (key, type) -> put(key, buildJsonObject { put("type", type) }) } }); if (required.isNotEmpty()) put("required", buildJsonArray { required.forEach { add(JsonPrimitive(it)) } })
 }
 private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
 private fun JsonObject.bool(key: String): Boolean? = this[key]?.jsonPrimitive?.booleanOrNull
