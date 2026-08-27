@@ -1,5 +1,7 @@
 package com.agentdroid
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import androidx.room.Room
 import com.agentdroid.core.ai.ProviderRegistry
@@ -10,8 +12,21 @@ import com.agentdroid.core.ai.providers.GeminiProvider
 import com.agentdroid.core.ai.providers.OpenAiProvider
 import com.agentdroid.core.ai.providers.OpenRouterProvider
 import com.agentdroid.core.agent.ToolRegistry
+import com.agentdroid.core.git.GitServices
+import com.agentdroid.core.git.JGitEngine
+import com.agentdroid.core.git.createGitTools
 import com.agentdroid.core.permissions.PermissionEngine
 import com.agentdroid.core.permissions.PermissionRequestCoordinator
+import com.agentdroid.core.runtime.CommandPolicy
+import com.agentdroid.core.runtime.DefaultProcessRunner
+import com.agentdroid.core.runtime.ProcessManager
+import com.agentdroid.core.runtime.RuntimeComponent
+import com.agentdroid.core.runtime.RuntimeDiscovery
+import com.agentdroid.core.runtime.RuntimeLimits
+import com.agentdroid.core.runtime.RuntimeServices
+import com.agentdroid.core.runtime.createRuntimeTools
+import com.agentdroid.core.terminal.TerminalClipboard
+import com.agentdroid.core.terminal.TermuxTerminalManager
 import com.agentdroid.core.workspace.ChangeSetManager
 import com.agentdroid.core.workspace.DiffEngine
 import com.agentdroid.core.workspace.WorkspaceFileSystem
@@ -26,8 +41,10 @@ import com.agentdroid.data.database.RoomConversationRepository
 import com.agentdroid.data.database.RoomMemoryRepository
 import com.agentdroid.data.database.RoomMessageRepository
 import com.agentdroid.data.database.RoomPermissionRuleStore
+import com.agentdroid.data.database.RoomProcessMetadataStore
 import com.agentdroid.data.database.RoomProviderRepository
 import com.agentdroid.data.database.RoomSkillRepository
+import com.agentdroid.data.database.RoomTerminalSessionMetadataStore
 import com.agentdroid.data.database.RoomWorkspaceRepository
 import com.agentdroid.security.SecureSecretStore
 import com.agentdroid.settings.SettingsRepository
@@ -57,14 +74,50 @@ class AppContainer(context: Context) {
     val changeSetStore = RoomChangeSetStore(database.changeSets())
     val diffEngine = DiffEngine()
 
+    val runtimeLimits = RuntimeLimits()
+    val processMetadataStore = RoomProcessMetadataStore(database.processes())
+    val processRunner = DefaultProcessRunner(runtimeLimits)
+    val processManager = ProcessManager(processRunner, processMetadataStore, runtimeLimits)
+    val commandPolicy = CommandPolicy()
+    val gitEngine = JGitEngine()
+    val terminalMetadataStore = RoomTerminalSessionMetadataStore(database.terminalSessions())
+
     private val fileSystems = ConcurrentHashMap<String, WorkspaceFileSystem>()
     private val changeManagers = ConcurrentHashMap<String, ChangeSetManager>()
+
+    private val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    private val terminalClipboard = object : TerminalClipboard {
+        override fun copy(text: String) { clipboard.setPrimaryClip(ClipData.newPlainText("terminal", text)) }
+        override fun paste(): String? = clipboard.primaryClip?.getItemAt(0)?.coerceToText(appContext)?.toString()
+    }
+
+    val terminalManager = TermuxTerminalManager(::workspaceRoot, terminalMetadataStore, terminalClipboard)
+
+    val runtimeDiscovery = RuntimeDiscovery(
+        processRunner,
+        appContext.cacheDir,
+        gitFallback = { RuntimeComponent("git", "Git", true, "JGit embedded", "embedded:jgit") }
+    )
 
     val workspaceServices: WorkspaceServices = object : WorkspaceServices {
         override fun fileSystem(workspaceId: String): WorkspaceFileSystem = workspaceFileSystem(workspaceId)
         override fun changeSets(workspaceId: String): ChangeSetManager = changeSetManager(workspaceId)
     }
-    val toolRegistry: ToolRegistry = createWorkspaceToolRegistry(workspaceServices, diffEngine)
+    val runtimeServices: RuntimeServices = object : RuntimeServices {
+        override val processManager: ProcessManager get() = this@AppContainer.processManager
+        override val commandPolicy: CommandPolicy get() = this@AppContainer.commandPolicy
+        override val limits: RuntimeLimits get() = this@AppContainer.runtimeLimits
+        override fun workspaceRoot(workspaceId: String): File = this@AppContainer.workspaceRoot(workspaceId)
+    }
+    val gitServices: GitServices = object : GitServices {
+        override val engine get() = gitEngine
+        override fun workspaceRoot(workspaceId: String): File = this@AppContainer.workspaceRoot(workspaceId)
+    }
+
+    val toolRegistry: ToolRegistry = createWorkspaceToolRegistry(workspaceServices, diffEngine).also { registry ->
+        registry.registerAll(createRuntimeTools(runtimeServices))
+        registry.registerAll(createGitTools(gitServices))
+    }
 
     fun workspaceRoot(workspaceId: String): File {
         require(workspaceId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) { "Invalid workspace id" }
