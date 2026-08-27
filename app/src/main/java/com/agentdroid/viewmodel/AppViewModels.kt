@@ -7,10 +7,13 @@ import com.agentdroid.AppContainer
 import com.agentdroid.core.ai.ProviderAgentModelClient
 import com.agentdroid.core.ai.ProviderTestResult
 import com.agentdroid.core.agent.*
+import com.agentdroid.core.artifacts.ArtifactListFilter
 import com.agentdroid.core.model.*
 import com.agentdroid.core.permissions.PermissionRule
 import com.agentdroid.core.workspace.*
 import com.agentdroid.data.database.*
+import com.agentdroid.integration.toolRegistryWithSubagents
+import com.agentdroid.integration.SubagentTimelineHub
 import com.agentdroid.settings.AppLanguage
 import com.agentdroid.settings.AppSettings
 import com.agentdroid.settings.AppTheme
@@ -201,10 +204,19 @@ class ChatViewModel(private val container: AppContainer) : ViewModel() {
         val workspaceId = selectedWorkspaceId.value ?: throw IllegalStateException("Select a workspace for Plan or Agent mode")
         val impl = container.providerRegistry.get(ProviderKind.valueOf(provider.kind)) ?: throw IllegalStateException("provider implementation missing")
         if (!impl.capabilities.toolCalling) throw IllegalStateException("Selected provider does not support tool calling")
-        val source = ContextSource { session -> buildContextSnapshot(session.workspaceId, id, userRequest) }
-        val loop = AgentLoop(container.toolRegistry, container.permissionEngine, ContextManager(source), container.auditSink)
         val session = AgentSession(UUID.randomUUID().toString(), id, workspaceId, mode.value, provider.id, selectedModelId.value ?: provider.modelId.orEmpty())
         val model = ProviderAgentModelClient(impl, provider.toModel(), provider.secretAlias?.let(container.secretStore::get).orEmpty())
+        val registry = toolRegistryWithSubagents(
+            container.toolRegistry, model, session.modelId, container.permissionEngine, container.auditSink
+        ) { items ->
+            items.forEach { item ->
+                container.subagentEvents.save(
+                    SubagentDelegationEvent(item.subagentId, item, item.taskId, item.startedAt ?: System.currentTimeMillis())
+                )
+            }
+        }
+        val source = ContextSource { current -> buildContextSnapshot(current.workspaceId, id, userRequest) }
+        val loop = AgentLoop(registry, container.permissionEngine, ContextManager(source), container.auditSink)
         var failed = false
         loop.run(session, userRequest, model).collect { event ->
             when (event) {
@@ -252,7 +264,30 @@ class ChatViewModel(private val container: AppContainer) : ViewModel() {
         val memories = container.memory.observeAll().first().filter { it.enabled && (it.scope == MemoryScope.GLOBAL.name || it.workspaceId == workspaceId) }.map { "${it.title}: ${it.content}" }
         val conversationSkills = activeConversationSkillIds.value
         val skillInstructions = container.skills.observeAll().first().filter { it.enabled && (it.scope == "GLOBAL" || it.workspaceId == workspaceId || it.id in conversationSkills) }.map { "${it.name}\n${it.instructions}" }
-        return ContextSnapshot(history, workspaceSummary, selectedFiles, memories, skillInstructions)
+        val task = container.taskEngine.list(workspaceId, conversationId).firstOrNull { !it.status.isTerminal }
+        val artifacts = container.artifactRepository.list(ArtifactListFilter(workspaceId, conversationId = conversationId))
+        val browser = container.browserEngine.sessions().firstOrNull {
+            it.metadata.value.workspaceId == workspaceId && it.metadata.value.conversationId == conversationId
+        }
+        val browserSummary = browser?.let {
+            val state = it.state.value
+            "${state.title}\n${state.currentUrl.orEmpty()}\nloading=${state.loading} tabs=${it.metadata.value.tabs.size}"
+        }.orEmpty()
+        val subagents = SubagentTimelineHub.items.value.takeLast(12).map {
+            "${it.role}: ${it.status} — ${it.label}${it.failureSummary?.let { failure -> " — $failure" }.orEmpty()}"
+        }
+        return ContextSnapshot(
+            conversation = history,
+            workspaceSummary = workspaceSummary,
+            selectedFiles = selectedFiles,
+            memories = memories,
+            skills = skillInstructions,
+            activeTaskSummary = task?.let { "${it.title}: ${it.status} (${it.progress}%)" }.orEmpty(),
+            taskSteps = task?.plan?.steps?.map { "${it.status}: ${it.title}" }.orEmpty(),
+            browserStateSummary = browserSummary,
+            artifactReferences = artifacts.take(20).map { "${it.id}: ${it.title} (${it.type})" },
+            subagentResults = subagents
+        )
     }
 
     private suspend fun appendAssistant(assistantId: String, conversationId: String, provider: ProviderConfigEntity, delta: String) {
@@ -458,6 +493,10 @@ class ContainerViewModelFactory(private val container: AppContainer) : ViewModel
             modelClass.isAssignableFrom(MemoryViewModel::class.java) -> MemoryViewModel(container)
             modelClass.isAssignableFrom(SkillsViewModel::class.java) -> SkillsViewModel(container)
             modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(container)
+            modelClass.isAssignableFrom(BrowserViewModel::class.java) -> BrowserViewModel(container)
+            modelClass.isAssignableFrom(TasksViewModel::class.java) -> TasksViewModel(container)
+            modelClass.isAssignableFrom(ArtifactsViewModel::class.java) -> ArtifactsViewModel(container)
+            modelClass.isAssignableFrom(SubagentTimelineViewModel::class.java) -> SubagentTimelineViewModel()
             else -> error("Unknown ViewModel ${modelClass.name}")
         }
         return created as T

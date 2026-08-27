@@ -190,7 +190,11 @@ class AgentLoop(
     ) {
         val input = toolContext?.let { toolRegistry.auditInputSummary(call, it) } ?: summarizeInput(call)
         val metadata = buildMap {
-            listOf("command", "cwd", "exitCode", "processId", "sessionId", "gitAction", "timedOut").forEach { key ->
+            listOf(
+                "command", "cwd", "exitCode", "processId", "sessionId", "gitAction", "timedOut",
+                "url", "domain", "elementId", "formAction", "query", "researchSessionId", "sourceId",
+                "taskId", "taskStepId", "artifactId", "subagentId", "subagentRole"
+            ).forEach { key ->
                 result.output[key]?.let { value -> put(key, value.toString().trim('"').take(500)) }
             }
         }
@@ -250,7 +254,11 @@ class AgentLoop(
     }
 
     private fun summarizeInput(call: ToolCall): String {
-        val safeKeys = listOf("path", "source", "destination", "query", "glob", "startLine", "endLine", "overwrite", "createParents", "cwd", "processId")
+        val safeKeys = listOf(
+            "path", "source", "destination", "query", "glob", "startLine", "endLine", "overwrite",
+            "createParents", "cwd", "processId", "url", "elementId", "direction", "taskId", "stepId",
+            "artifactId", "researchSessionId", "sourceId", "role"
+        )
         return buildJsonObject { safeKeys.forEach { key -> call.input[key]?.let { put(key, it) } } }.toString().take(1_000)
     }
 }

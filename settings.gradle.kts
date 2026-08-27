@@ -18,5 +18,10 @@ include(
     ":core:runtime",
     ":core:terminal",
     ":core:git",
+    ":core:browser",
+    ":core:tasks",
+    ":core:research",
+    ":core:artifacts",
+    ":core:subagents",
     ":data:database"
 )
