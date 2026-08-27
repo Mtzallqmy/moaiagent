@@ -16,12 +16,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.agentdroid.R
 import com.agentdroid.core.workspace.ChangeSetStatus
 import com.agentdroid.core.workspace.FileChange
 import com.agentdroid.core.workspace.WorkspaceFileInfo
@@ -43,7 +45,14 @@ fun Phase2WorkspacesScreen(nav: NavHostController, factory: ContainerViewModelFa
     var editing by remember { mutableStateOf<WorkspaceEntity?>(null) }
     var deleting by remember { mutableStateOf<WorkspaceEntity?>(null) }
     Column(Modifier.fillMaxSize().testTag("workspaces_screen")) {
-        TopAppBar(title = { Text("Workspaces") }, actions = { IconButton({ editing = WorkspaceEntity(UUID.randomUUID().toString(), "", "", System.currentTimeMillis(), System.currentTimeMillis()) }) { Icon(Icons.Default.Add, "Create workspace") } })
+        TopAppBar(
+            title = { Text(stringResource(R.string.workspaces)) },
+            actions = {
+                IconButton({ editing = WorkspaceEntity(UUID.randomUUID().toString(), "", "", System.currentTimeMillis(), System.currentTimeMillis()) }) {
+                    Icon(Icons.Default.Add, stringResource(R.string.create_workspace))
+                }
+            }
+        )
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(workspaces, key = { it.id }) { workspace ->
                 ElevatedCard({ nav.navigate("workspace/${workspace.id}") }, Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
@@ -51,7 +60,12 @@ fun Phase2WorkspacesScreen(nav: NavHostController, factory: ContainerViewModelFa
                         headlineContent = { Text(workspace.name) },
                         supportingContent = { Text(workspace.description.ifBlank { workspace.rootPath }) },
                         leadingContent = { Icon(Icons.Default.Folder, null) },
-                        trailingContent = { Row { IconButton({ editing = workspace }) { Icon(Icons.Default.Edit, "Edit") }; IconButton({ deleting = workspace }) { Icon(Icons.Default.Delete, "Delete") } } }
+                        trailingContent = {
+                            Row {
+                                IconButton({ editing = workspace }) { Icon(Icons.Default.Edit, stringResource(R.string.edit)) }
+                                IconButton({ deleting = workspace }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) }
+                            }
+                        }
                     )
                 }
             }
@@ -62,19 +76,24 @@ fun Phase2WorkspacesScreen(nav: NavHostController, factory: ContainerViewModelFa
         var description by remember(workspace.id) { mutableStateOf(workspace.description) }
         AlertDialog(
             onDismissRequest = { editing = null },
-            title = { Text(if (workspace.name.isBlank()) "Create workspace" else "Edit workspace") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(name, { name = it }, label = { Text("Name") }); OutlinedTextField(description, { description = it }, label = { Text("Description") }) } },
-            confirmButton = { Button({ if (name.isNotBlank()) { vm.save(workspace.copy(name = name.trim(), description = description, updatedAt = System.currentTimeMillis())); editing = null } }) { Text("Save") } },
-            dismissButton = { TextButton({ editing = null }) { Text("Cancel") } }
+            title = { Text(if (workspace.name.isBlank()) stringResource(R.string.create_workspace) else stringResource(R.string.edit_workspace)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.name)) })
+                    OutlinedTextField(description, { description = it }, label = { Text(stringResource(R.string.description)) })
+                }
+            },
+            confirmButton = { Button({ if (name.isNotBlank()) { vm.save(workspace.copy(name = name.trim(), description = description, updatedAt = System.currentTimeMillis())); editing = null } }) { Text(stringResource(R.string.save)) } },
+            dismissButton = { TextButton({ editing = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     deleting?.let { workspace ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("Delete workspace?") },
-            text = { Text("This deletes the workspace files and metadata. Agent deletions use workspace trash; direct workspace removal requires this confirmation.") },
-            confirmButton = { Button({ vm.delete(workspace.id); deleting = null }) { Text("Delete") } },
-            dismissButton = { TextButton({ deleting = null }) { Text("Cancel") } }
+            title = { Text(stringResource(R.string.delete_workspace_title)) },
+            text = { Text(stringResource(R.string.delete_workspace_body)) },
+            confirmButton = { Button({ vm.delete(workspace.id); deleting = null }) { Text(stringResource(R.string.delete)) } },
+            dismissButton = { TextButton({ deleting = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }
@@ -101,33 +120,51 @@ fun WorkspaceBrowserScreen(nav: NavHostController, factory: ContainerViewModelFa
 
     Column(Modifier.fillMaxSize().testTag("workspace_browser")) {
         TopAppBar(
-            title = { Column { Text(workspace?.name ?: "Workspace"); if (path.isNotBlank()) Text(path, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace) } },
-            navigationIcon = { IconButton({ if (path.isBlank()) nav.popBackStack() else vm.goUp() }) { Icon(Icons.Default.ArrowBack, "Back") } },
+            title = { Column { Text(workspace?.name ?: stringResource(R.string.workspace_scope)); if (path.isNotBlank()) Text(path, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace) } },
+            navigationIcon = { IconButton({ if (path.isBlank()) nav.popBackStack() else vm.goUp() }) { Icon(Icons.Default.ArrowBack, stringResource(R.string.back)) } },
             actions = {
-                IconButton({ createKind = "file" }) { Icon(Icons.Default.NoteAdd, "Create file") }
-                IconButton({ createKind = "folder" }) { Icon(Icons.Default.CreateNewFolder, "Create folder") }
-                IconButton({ nav.navigate("changes/$workspaceId") }) { Icon(Icons.Default.Difference, "Changes") }
+                IconButton({ createKind = "file" }) { Icon(Icons.Default.NoteAdd, stringResource(R.string.create_file)) }
+                IconButton({ createKind = "folder" }) { Icon(Icons.Default.CreateNewFolder, stringResource(R.string.create_folder)) }
+                IconButton({ nav.navigate("changes/$workspaceId") }) { Icon(Icons.Default.Difference, stringResource(R.string.changes)) }
             }
         )
         error?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error) }
-        if (entries.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Empty folder") }
+        if (entries.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.empty_folder)) }
         else LazyColumn(Modifier.fillMaxSize()) {
             items(entries, key = { it.path }) { item ->
                 ListItem(
                     modifier = Modifier.clickable { if (item.directory) vm.openDirectory(item.path) else vm.openFile(item.path) }.testTag("workspace_item_${item.path}"),
                     headlineContent = { Text(item.name) },
-                    supportingContent = { Text(if (item.directory) "Folder • ${formatModified(item.modifiedAt)}" else "${formatSize(item.size)} • ${formatModified(item.modifiedAt)}") },
+                    supportingContent = { Text(if (item.directory) stringResource(R.string.folder_with_date, formatModified(item.modifiedAt)) else "${formatSize(item.size)} • ${formatModified(item.modifiedAt)}") },
                     leadingContent = { Icon(if (item.directory) Icons.Default.Folder else fileIcon(item.name), null) },
-                    trailingContent = { Row { IconButton({ moveTarget = item }) { Icon(Icons.Default.DriveFileRenameOutline, "Move or rename") }; IconButton({ deleteTarget = item }) { Icon(Icons.Default.Delete, "Delete") } } }
+                    trailingContent = {
+                        Row {
+                            IconButton({ moveTarget = item }) { Icon(Icons.Default.DriveFileRenameOutline, stringResource(R.string.move_or_rename)) }
+                            IconButton({ deleteTarget = item }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) }
+                        }
+                    }
                 )
                 HorizontalDivider()
             }
         }
     }
 
-    createKind?.let { kind -> NameDialog(if (kind == "folder") "Create folder" else "Create file", "Name", onDismiss = { createKind = null }) { name -> if (kind == "folder") vm.createFolder(name) else vm.createFile(name); createKind = null } }
-    moveTarget?.let { item -> NameDialog("Move / rename ${item.name}", "Destination", item.path, { moveTarget = null }) { destination -> vm.move(item.path, destination); moveTarget = null } }
-    deleteTarget?.let { item -> AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("Delete ${item.name}?") }, text = { Text("This direct action is confirmed by you. The item is stored in workspace trash and can be reverted from Changes.") }, confirmButton = { Button({ vm.delete(item.path); deleteTarget = null }, Modifier.testTag("workspace_delete_confirm")) { Text("Delete") } }, dismissButton = { TextButton({ deleteTarget = null }) { Text("Cancel") } }) }
+    createKind?.let { kind ->
+        NameDialog(if (kind == "folder") stringResource(R.string.create_folder) else stringResource(R.string.create_file), stringResource(R.string.name), onDismiss = { createKind = null }) { name ->
+            if (kind == "folder") vm.createFolder(name) else vm.createFile(name)
+            createKind = null
+        }
+    }
+    moveTarget?.let { item -> NameDialog(stringResource(R.string.move_rename_item, item.name), stringResource(R.string.destination), item.path, { moveTarget = null }) { destination -> vm.move(item.path, destination); moveTarget = null } }
+    deleteTarget?.let { item ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text(stringResource(R.string.delete_item_title, item.name)) },
+            text = { Text(stringResource(R.string.delete_item_body)) },
+            confirmButton = { Button({ vm.delete(item.path); deleteTarget = null }, Modifier.testTag("workspace_delete_confirm")) { Text(stringResource(R.string.delete)) } },
+            dismissButton = { TextButton({ deleteTarget = null }) { Text(stringResource(R.string.cancel)) } }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,8 +180,12 @@ private fun FileEditorScreen(vm: WorkspaceFilesViewModel, path: String, text: St
         Column(Modifier.fillMaxSize().testTag("file_editor")) {
             TopAppBar(
                 title = { Text(path, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleSmall) },
-                navigationIcon = { IconButton({ vm.editorPath.value = null }) { Icon(Icons.Default.ArrowBack, "Back to files") } },
-                actions = { IconButton(vm::undo) { Icon(Icons.Default.Undo, "Undo") }; IconButton(vm::redo) { Icon(Icons.Default.Redo, "Redo") }; IconButton(vm::saveEditor, enabled = text != original, modifier = Modifier.testTag("file_save")) { Icon(Icons.Default.Save, "Save") } }
+                navigationIcon = { IconButton({ vm.editorPath.value = null }) { Icon(Icons.Default.ArrowBack, stringResource(R.string.back_to_files)) } },
+                actions = {
+                    IconButton(vm::undo) { Icon(Icons.Default.Undo, stringResource(R.string.undo)) }
+                    IconButton(vm::redo) { Icon(Icons.Default.Redo, stringResource(R.string.redo)) }
+                    IconButton(vm::saveEditor, enabled = text != original, modifier = Modifier.testTag("file_save")) { Icon(Icons.Default.Save, stringResource(R.string.save)) }
+                }
             )
             Row(Modifier.fillMaxSize().horizontalScroll(horizontal).verticalScroll(vertical).padding(12.dp)) {
                 Text(lineNumbers, Modifier.padding(end = 12.dp), fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -162,12 +203,15 @@ fun WorkspaceChangesScreen(nav: NavHostController, factory: ContainerViewModelFa
     LaunchedEffect(workspaceId) { vm.setWorkspace(workspaceId) }
     val pending = changes.filter { it.status == ChangeSetStatus.PROPOSED }
     Column(Modifier.fillMaxSize().testTag("changes_screen")) {
-        TopAppBar(title = { Text("Workspace changes") }, navigationIcon = { IconButton(nav::popBackStack) { Icon(Icons.Default.ArrowBack, "Back") } })
-        if (pending.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) { TextButton({ pending.forEach { vm.accept(it.id) } }, Modifier.testTag("accept_all")) { Text("Accept all") }; TextButton({ pending.forEach { vm.reject(it.id) } }, Modifier.testTag("reject_all")) { Text("Reject all") } }
+        TopAppBar(title = { Text(stringResource(R.string.workspace_changes)) }, navigationIcon = { IconButton(nav::popBackStack) { Icon(Icons.Default.ArrowBack, stringResource(R.string.back)) } })
+        if (pending.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
+            TextButton({ pending.forEach { vm.accept(it.id) } }, Modifier.testTag("accept_all")) { Text(stringResource(R.string.accept_all)) }
+            TextButton({ pending.forEach { vm.reject(it.id) } }, Modifier.testTag("reject_all")) { Text(stringResource(R.string.reject_all)) }
+        }
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(changes, key = { it.id }) { changeSet ->
                 ElevatedCard({ nav.navigate("diff/$workspaceId/${changeSet.id}") }, Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                    ListItem(headlineContent = { Text("${changeSet.files.size} files changed  +${changeSet.addedLines} -${changeSet.removedLines}") }, supportingContent = { Text(changeSet.status.name) }, leadingContent = { Icon(Icons.Default.Difference, null) })
+                    ListItem(headlineContent = { Text(stringResource(R.string.files_changed, changeSet.files.size, changeSet.addedLines, changeSet.removedLines)) }, supportingContent = { Text(changeSet.status.name) }, leadingContent = { Icon(Icons.Default.Difference, null) })
                 }
             }
         }
@@ -182,25 +226,27 @@ fun DiffScreen(nav: NavHostController, factory: ContainerViewModelFactory, works
     var edit by remember { mutableStateOf<FileChange?>(null) }
     LaunchedEffect(workspaceId, changeSetId) { vm.setWorkspace(workspaceId); vm.select(changeSetId) }
     Column(Modifier.fillMaxSize().testTag("diff_screen")) {
-        TopAppBar(title = { Text("Diff") }, navigationIcon = { IconButton(nav::popBackStack) { Icon(Icons.Default.ArrowBack, "Back") } })
+        TopAppBar(title = { Text(stringResource(R.string.diff)) }, navigationIcon = { IconButton(nav::popBackStack) { Icon(Icons.Default.ArrowBack, stringResource(R.string.back)) } })
         val current = changeSet
         if (current == null) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
         else {
-            Text("${current.files.size} files changed  +${current.addedLines} -${current.removedLines}", Modifier.padding(12.dp), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.files_changed, current.files.size, current.addedLines, current.removedLines), Modifier.padding(12.dp), style = MaterialTheme.typography.titleMedium)
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(current.files, key = { it.path + (it.destinationPath ?: "") }) { file ->
                     ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(file.destinationPath?.let { "${file.path} → $it" } ?: file.path, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleSmall)
                             Text(file.changeType.name, style = MaterialTheme.typography.labelSmall)
-                            if (file.diff.isNotBlank()) Text(file.diff, Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                            if (file.diff.isNotBlank()) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                Text(file.diff, Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                            }
                             Row {
                                 if (current.status == ChangeSetStatus.PROPOSED) {
-                                    TextButton({ vm.accept(current.id) }, Modifier.testTag("diff_accept")) { Text("Accept") }
-                                    TextButton({ vm.reject(current.id) }, Modifier.testTag("diff_reject")) { Text("Reject") }
-                                    if (file.afterContent != null) TextButton({ edit = file }) { Text("Edit") }
+                                    TextButton({ vm.accept(current.id) }, Modifier.testTag("diff_accept")) { Text(stringResource(R.string.accept)) }
+                                    TextButton({ vm.reject(current.id) }, Modifier.testTag("diff_reject")) { Text(stringResource(R.string.reject)) }
+                                    if (file.afterContent != null) TextButton({ edit = file }) { Text(stringResource(R.string.edit)) }
                                 }
-                                if (current.status == ChangeSetStatus.APPLIED) TextButton({ vm.revert(current.id) }, Modifier.testTag("diff_revert")) { Text("Revert") }
+                                if (current.status == ChangeSetStatus.APPLIED) TextButton({ vm.revert(current.id) }, Modifier.testTag("diff_revert")) { Text(stringResource(R.string.revert)) }
                             }
                         }
                     }
@@ -210,7 +256,13 @@ fun DiffScreen(nav: NavHostController, factory: ContainerViewModelFactory, works
     }
     edit?.let { file ->
         var value by remember(file.path) { mutableStateOf(file.afterContent.orEmpty()) }
-        AlertDialog(onDismissRequest = { edit = null }, title = { Text("Edit proposed ${file.path}") }, text = { OutlinedTextField(value, { value = it }, Modifier.fillMaxWidth(), minLines = 10, textStyle = TextStyle(fontFamily = FontFamily.Monospace)) }, confirmButton = { Button({ vm.edit(changeSetId, file.path, value); edit = null }) { Text("Save proposal") } }, dismissButton = { TextButton({ edit = null }) { Text("Cancel") } })
+        AlertDialog(
+            onDismissRequest = { edit = null },
+            title = { Text(stringResource(R.string.edit_proposed, file.path)) },
+            text = { CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { OutlinedTextField(value, { value = it }, Modifier.fillMaxWidth(), minLines = 10, textStyle = TextStyle(fontFamily = FontFamily.Monospace)) } },
+            confirmButton = { Button({ vm.edit(changeSetId, file.path, value); edit = null }) { Text(stringResource(R.string.save_proposal)) } },
+            dismissButton = { TextButton({ edit = null }) { Text(stringResource(R.string.cancel)) } }
+        )
     }
 }
 
@@ -221,12 +273,18 @@ fun PermissionRulesScreen(nav: NavHostController, factory: ContainerViewModelFac
     val rules by vm.rules.collectAsState()
     val audit by vm.audit.collectAsState()
     Column(Modifier.fillMaxSize().testTag("permission_rules")) {
-        TopAppBar(title = { Text("Agent permissions") }, navigationIcon = { IconButton(nav::popBackStack) { Icon(Icons.Default.ArrowBack, "Back") } })
+        TopAppBar(title = { Text(stringResource(R.string.agent_permissions)) }, navigationIcon = { IconButton(nav::popBackStack) { Icon(Icons.Default.ArrowBack, stringResource(R.string.back)) } })
         LazyColumn(Modifier.fillMaxSize()) {
-            item { Text("Always rules", Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium) }
-            if (rules.isEmpty()) item { Text("No stored permission rules.", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            items(rules, key = { it.id }) { rule -> ListItem(headlineContent = { Text("${rule.toolName}: ${rule.decision.name}") }, supportingContent = { Text(rule.workspaceId?.let { "Workspace $it" } ?: "All workspaces") }, trailingContent = { IconButton({ vm.deleteRule(rule.id) }) { Icon(Icons.Default.Delete, "Delete rule") } }) }
-            item { HorizontalDivider(); Text("Recent tool audit", Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium) }
+            item { Text(stringResource(R.string.always_rules), Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium) }
+            if (rules.isEmpty()) item { Text(stringResource(R.string.no_permission_rules), Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            items(rules, key = { it.id }) { rule ->
+                ListItem(
+                    headlineContent = { Text("${rule.toolName}: ${rule.decision.name}") },
+                    supportingContent = { Text(rule.workspaceId?.let { stringResource(R.string.workspace_id_label, it) } ?: stringResource(R.string.all_workspaces)) },
+                    trailingContent = { IconButton({ vm.deleteRule(rule.id) }) { Icon(Icons.Default.Delete, stringResource(R.string.delete_rule)) } }
+                )
+            }
+            item { HorizontalDivider(); Text(stringResource(R.string.recent_tool_audit), Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium) }
             items(audit.take(50), key = { it.id }) { entry -> ListItem(headlineContent = { Text("${entry.status} ${entry.toolName}") }, supportingContent = { Text("${entry.durationMs} ms • ${entry.resultSummary}") }, leadingContent = { Icon(Icons.Default.ReceiptLong, null) }) }
         }
     }
@@ -235,7 +293,13 @@ fun PermissionRulesScreen(nav: NavHostController, factory: ContainerViewModelFac
 @Composable
 private fun NameDialog(title: String, label: String, initial: String = "", onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var value by remember(initial) { mutableStateOf(initial) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { OutlinedTextField(value, { value = it }, label = { Text(label) }, singleLine = true) }, confirmButton = { Button({ if (value.isNotBlank()) onConfirm(value.trim()) }) { Text("Save") } }, dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { OutlinedTextField(value, { value = it }, label = { Text(label) }, singleLine = true) },
+        confirmButton = { Button({ if (value.isNotBlank()) onConfirm(value.trim()) }) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancel)) } }
+    )
 }
 
 private fun formatSize(size: Long): String = when { size < 1024 -> "$size B"; size < 1024 * 1024 -> "${size / 1024} KB"; else -> String.format("%.1f MB", size.toDouble() / (1024 * 1024)) }
