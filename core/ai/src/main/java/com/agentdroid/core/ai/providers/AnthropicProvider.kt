@@ -68,6 +68,7 @@ class AnthropicProvider(private val transport: HttpTransport = HttpTransport()) 
                 response.requireSuccess()
                 val reader = response.body?.charStream()?.buffered() ?: return@use
                 val pending = mutableMapOf<Int, AnthropicToolAccumulator>()
+                var completed = false
                 while (true) {
                     val line = reader.readLine() ?: break
                     if (!line.startsWith("data:")) continue
@@ -84,8 +85,8 @@ class AnthropicProvider(private val transport: HttpTransport = HttpTransport()) 
                             if (block["type"]?.jsonPrimitive?.contentOrNull == "tool_use") {
                                 val id = block["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
                                 val name = block["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                                val initial = block["input"]?.jsonObject?.takeIf { it.isNotEmpty() }?.toString().orEmpty()
-                                pending[index] = AnthropicToolAccumulator(id, name, StringBuilder(initial))
+                                val initialInput = block["input"] as? JsonObject
+                                pending[index] = AnthropicToolAccumulator(id, name, initialInput, StringBuilder())
                                 emit(AiStreamEvent.ToolCallStarted(id, name, index))
                             }
                         }
@@ -97,7 +98,7 @@ class AnthropicProvider(private val transport: HttpTransport = HttpTransport()) 
                                 "thinking_delta" -> delta["thinking"]?.jsonPrimitive?.contentOrNull?.let { emit(AiStreamEvent.ReasoningDelta(it)) }
                                 "input_json_delta" -> delta["partial_json"]?.jsonPrimitive?.contentOrNull?.let { partial ->
                                     pending[index]?.let { state ->
-                                        state.arguments.append(partial)
+                                        state.argumentDeltas.append(partial)
                                         emit(AiStreamEvent.ToolCallDelta(state.id, partial, index))
                                     }
                                 }
@@ -108,11 +109,15 @@ class AnthropicProvider(private val transport: HttpTransport = HttpTransport()) 
                             pending.remove(index)?.let { state -> emit(AiStreamEvent.ToolCallCompleted(state.toCall(), index)) }
                         }
                         "message_delta" -> root["usage"]?.jsonObject?.let { usage -> emit(AiStreamEvent.UsageEvent(Usage(null, usage["output_tokens"]?.jsonPrimitive?.intOrNull, null))) }
-                        "message_stop" -> emit(AiStreamEvent.Completed)
+                        "message_stop" -> {
+                            completed = true
+                            emit(AiStreamEvent.Completed)
+                        }
                         "error" -> emit(AiStreamEvent.Error(AppError.Provider(root["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull ?: "Anthropic stream error")))
                     }
                 }
                 pending.forEach { (index, state) -> emit(AiStreamEvent.ToolCallCompleted(state.toCall(), index)) }
+                if (!completed) emit(AiStreamEvent.Completed)
             }
         } catch (error: ProviderHttpException) { emit(AiStreamEvent.Error(error.error))
         } catch (error: IllegalArgumentException) { emit(AiStreamEvent.Error(AppError.Serialization(error.message ?: "Invalid Anthropic tool arguments")))
@@ -153,10 +158,15 @@ class AnthropicProvider(private val transport: HttpTransport = HttpTransport()) 
     }
 }
 
-private data class AnthropicToolAccumulator(val id: String, val name: String, val arguments: StringBuilder) {
+private data class AnthropicToolAccumulator(
+    val id: String,
+    val name: String,
+    val initialInput: JsonObject?,
+    val argumentDeltas: StringBuilder
+) {
     fun toCall(): ModelToolCall {
         if (id.isBlank() || name.isBlank()) throw IllegalArgumentException("Anthropic returned an incomplete tool call")
-        val raw = arguments.toString().ifBlank { "{}" }
+        val raw = argumentDeltas.toString().ifBlank { initialInput?.toString().orEmpty() }.ifBlank { "{}" }
         val parsed = runCatching { anthropicJson.parseToJsonElement(raw).jsonObject }.getOrElse {
             throw IllegalArgumentException("Invalid JSON arguments for $name: ${it.message}")
         }
