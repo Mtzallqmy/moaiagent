@@ -61,15 +61,32 @@ open class OpenAiCompatibleProvider(
             request.maxTokens?.let { put("max_tokens", it) }
             putJsonArray("messages") {
                 request.systemPrompt?.takeIf { it.isNotBlank() }?.let { addJsonObject { put("role", "system"); put("content", it) } }
-                request.messages.forEach { message -> addJsonObject { put("role", message.role.name.lowercase()); put("content", message.content) } }
+                request.messages.forEach { message -> add(openAiMessage(message)) }
+            }
+            if (request.tools.isNotEmpty()) {
+                putJsonArray("tools") {
+                    request.tools.forEach { tool ->
+                        addJsonObject {
+                            put("type", "function")
+                            putJsonObject("function") {
+                                put("name", tool.name)
+                                put("description", tool.description)
+                                put("parameters", tool.inputSchema)
+                            }
+                        }
+                    }
+                }
             }
         }.toString()
         try {
             transport.execute(request(config, secret, "/chat/completions", "POST", payload)).use { response ->
                 response.requireSuccess()
                 val reader = response.body?.charStream()?.buffered() ?: return@use
+                val pending = linkedMapOf<Int, OpenAiToolAccumulator>()
+                val completed = mutableSetOf<Int>()
                 while (true) {
                     val line = reader.readLine() ?: break
+                    if (!line.startsWith("data:")) continue
                     val data = line.removePrefix("data:").trim()
                     if (data.isBlank() || data == "[DONE]") continue
                     val root = runCatching { json.parseToJsonElement(data).jsonObject }.getOrNull() ?: continue
@@ -77,14 +94,91 @@ open class OpenAiCompatibleProvider(
                     val delta = choice["delta"]?.jsonObject
                     delta?.get("content")?.jsonPrimitive?.contentOrNull?.let { emit(AiStreamEvent.TextDelta(it)) }
                     delta?.get("reasoning_content")?.jsonPrimitive?.contentOrNull?.let { emit(AiStreamEvent.ReasoningDelta(it)) }
-                    root["usage"]?.jsonObject?.let { emit(AiStreamEvent.UsageEvent(Usage(it["prompt_tokens"]?.jsonPrimitive?.intOrNull, it["completion_tokens"]?.jsonPrimitive?.intOrNull, it["total_tokens"]?.jsonPrimitive?.intOrNull))) }
+                    delta?.get("tool_calls")?.jsonArray?.forEach { item ->
+                        val tool = item.jsonObject
+                        val index = tool["index"]?.jsonPrimitive?.intOrNull ?: 0
+                        val state = pending.getOrPut(index) { OpenAiToolAccumulator() }
+                        tool["id"]?.jsonPrimitive?.contentOrNull?.let { id -> state.id = id }
+                        val function = tool["function"]?.jsonObject
+                        function?.get("name")?.jsonPrimitive?.contentOrNull?.let { name -> state.name = name }
+                        if (!state.started && state.id.isNotBlank() && state.name.isNotBlank()) {
+                            state.started = true
+                            emit(AiStreamEvent.ToolCallStarted(state.id, state.name, index))
+                        }
+                        function?.get("arguments")?.jsonPrimitive?.contentOrNull?.let { arguments ->
+                            state.arguments.append(arguments)
+                            if (state.id.isNotBlank()) emit(AiStreamEvent.ToolCallDelta(state.id, arguments, index))
+                        }
+                    }
+                    root["usage"]?.jsonObject?.let { usage -> emit(AiStreamEvent.UsageEvent(Usage(usage["prompt_tokens"]?.jsonPrimitive?.intOrNull, usage["completion_tokens"]?.jsonPrimitive?.intOrNull, usage["total_tokens"]?.jsonPrimitive?.intOrNull))) }
+                    if (choice["finish_reason"]?.jsonPrimitive?.contentOrNull == "tool_calls") {
+                        for ((index, state) in pending) {
+                            if (index in completed) continue
+                            emit(AiStreamEvent.ToolCallCompleted(state.toCall(), index))
+                            completed += index
+                        }
+                    }
+                }
+                for ((index, state) in pending) {
+                    if (index !in completed) emit(AiStreamEvent.ToolCallCompleted(state.toCall(), index))
                 }
                 emit(AiStreamEvent.Completed)
             }
         } catch (error: ProviderHttpException) { emit(AiStreamEvent.Error(error.error))
+        } catch (error: ToolArgumentsException) { emit(AiStreamEvent.Error(AppError.Serialization(error.message ?: "Invalid tool arguments")))
         } catch (error: Throwable) { emit(AiStreamEvent.Error(error.toAppError())) }
     }
+
+    private fun openAiMessage(message: ChatMessage): JsonObject = buildJsonObject {
+        when (message.role) {
+            MessageRole.TOOL -> {
+                put("role", "tool")
+                put("tool_call_id", message.toolCallId ?: "")
+                put("content", message.content)
+            }
+            MessageRole.ASSISTANT -> {
+                put("role", "assistant")
+                if (message.content.isNotBlank()) put("content", message.content) else put("content", JsonNull)
+                if (message.toolCalls.isNotEmpty()) {
+                    putJsonArray("tool_calls") {
+                        message.toolCalls.forEach { call ->
+                            addJsonObject {
+                                put("id", call.id)
+                                put("type", "function")
+                                putJsonObject("function") {
+                                    put("name", call.name)
+                                    put("arguments", call.rawArguments.ifBlank { call.arguments.toString() })
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else -> {
+                put("role", message.role.name.lowercase())
+                put("content", message.content)
+            }
+        }
+    }
 }
+
+private class OpenAiToolAccumulator {
+    var id: String = ""
+    var name: String = ""
+    var started: Boolean = false
+    val arguments = StringBuilder()
+
+    fun toCall(): ModelToolCall {
+        if (id.isBlank() || name.isBlank()) throw ToolArgumentsException("OpenAI returned an incomplete tool call")
+        val raw = arguments.toString().ifBlank { "{}" }
+        val parsed = runCatching { json.parseToJsonElement(raw).jsonObject }.getOrElse {
+            throw ToolArgumentsException("Invalid JSON arguments for $name: ${it.message}")
+        }
+        return ModelToolCall(id, name, parsed, raw)
+    }
+}
+
+private class ToolArgumentsException(message: String) : IllegalArgumentException(message)
 
 class OpenAiProvider(transport: HttpTransport = HttpTransport()) : OpenAiCompatibleProvider(ProviderKind.OPENAI, "OpenAI", "https://api.openai.com/v1", transport)
 class OpenRouterProvider(transport: HttpTransport = HttpTransport()) : OpenAiCompatibleProvider(ProviderKind.OPENROUTER, "OpenRouter", "https://openrouter.ai/api/v1", transport) {

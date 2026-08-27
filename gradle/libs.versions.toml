@@ -17,6 +17,7 @@ espresso = "3.7.0"
 mockWebServer = "4.12.0"
 appcompat = "1.7.0"
 material = "1.12.0"
+javaDiffUtils = "4.17"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -44,6 +45,7 @@ androidx-test-core = { module = "androidx.test:core-ktx", version.ref = "android
 espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 material = { module = "com.google.android.material:material", version.ref = "material" }
+java-diff-utils = { module = "io.github.java-diff-utils:java-diff-utils", version.ref = "javaDiffUtils" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

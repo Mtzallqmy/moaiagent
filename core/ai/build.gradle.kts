@@ -6,4 +6,4 @@ android { namespace = "com.agentdroid.core.ai"; compileSdk = 35
 }
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach { kotlinOptions.jvmTarget = "1.8" }
 
-dependencies { implementation(project(":core:model")); implementation(libs.kotlinx.coroutines); implementation(libs.okhttp); implementation(libs.serialization.json); testImplementation("junit:junit:4.13.2"); testImplementation(libs.mockwebserver); testImplementation(libs.kotlinx.coroutines) }
+dependencies { implementation(project(":core:model")); implementation(project(":core:agent")); implementation(libs.kotlinx.coroutines); implementation(libs.okhttp); implementation(libs.serialization.json); testImplementation("junit:junit:4.13.2"); testImplementation(libs.mockwebserver); testImplementation(libs.kotlinx.coroutines) }

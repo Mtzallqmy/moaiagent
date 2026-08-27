@@ -46,7 +46,7 @@ class ProviderProtocolTest {
             val events = GeminiProvider(HttpTransport()).streamChat(request, config(ProviderKind.GEMINI, server, "/v1beta"), "secret").toList()
             assertEquals(listOf("a", "b"), events.filterIsInstance<AiStreamEvent.TextDelta>().map { it.text })
             assertTrue(events.any { it is AiStreamEvent.UsageEvent })
-            assertEquals("/v1beta/models/test-model:streamGenerateContent?key=secret", server.takeRequest().path)
+            assertEquals("/v1beta/models/test-model:streamGenerateContent?alt=sse&key=secret", server.takeRequest().path)
         }
     }
 
