@@ -5,10 +5,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import com.agentdroid.core.browser.BrowserPageState
@@ -84,7 +85,7 @@ class Phase4UiTest {
 
         compose.onNodeWithTag("browser_form_permission").assertIsDisplayed()
         compose.onNodeWithText("••••••••").assertIsDisplayed()
-        compose.onNodeWithText("never-display-this").assertDoesNotExist()
+        compose.onAllNodesWithText("never-display-this").assertCountEquals(0)
         compose.onNodeWithTag("form_allow_once").performClick()
         compose.runOnIdle { assertTrue(allowed) }
     }
