@@ -76,7 +76,7 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
             composable("agent") { Phase2ChatScreen(nav, factory) }
             composable("agent/{conversationId}", arguments = listOf(navArgument("conversationId") { type = NavType.StringType })) { entry -> Phase2ChatScreen(nav, factory, entry.arguments?.getString("conversationId")) }
             composable("workspaces") { Phase2WorkspacesScreen(nav, factory) }
-            composable("workspace/{workspaceId}", arguments = listOf(navArgument("workspaceId") { type = NavType.StringType })) { entry -> WorkspaceBrowserScreen(nav, factory, entry.arguments?.getString("workspaceId").orEmpty()) }
+            composable("workspace/{workspaceId}", arguments = listOf(navArgument("workspaceId") { type = NavType.StringType })) { entry -> Phase3WorkspaceBrowserHost(nav, factory, entry.arguments?.getString("workspaceId").orEmpty()) }
             composable("changes/{workspaceId}", arguments = listOf(navArgument("workspaceId") { type = NavType.StringType })) { entry -> WorkspaceChangesScreen(nav, factory, entry.arguments?.getString("workspaceId").orEmpty()) }
             composable(
                 "diff/{workspaceId}/{changeSetId}",
