@@ -307,6 +307,11 @@ class FileArtifactRepository(
         checkSize(content.toByteArray(StandardCharsets.UTF_8).size.toLong())
         if (type == ArtifactType.JSON) runCatching {
             val trimmed = content.trim()
+            require(
+                trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.startsWith('"') ||
+                    trimmed.startsWith('-') || trimmed.firstOrNull()?.isDigit() == true ||
+                    trimmed == "true" || trimmed == "false" || trimmed == "null"
+            ) { "Invalid JSON token" }
             val parsed = json.parseToJsonElement(trimmed)
             if (parsed is JsonPrimitive && parsed.isString && !(trimmed.startsWith('"') && trimmed.endsWith('"'))) {
                 throw IllegalArgumentException("Unquoted JSON string")
