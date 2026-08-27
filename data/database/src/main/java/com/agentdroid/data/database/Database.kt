@@ -21,14 +21,7 @@ data class SkillEntity(@PrimaryKey val id: String, val name: String, val descrip
 data class AppSettingEntity(@PrimaryKey val key: String, val value: String)
 
 @Entity(tableName = "permission_rules", indices = [Index("toolName"), Index("workspaceId")])
-data class PermissionRuleEntity(
-    @PrimaryKey val id: String,
-    val toolName: String,
-    val workspaceId: String?,
-    val decision: String,
-    val scope: String,
-    val createdAt: Long
-)
+data class PermissionRuleEntity(@PrimaryKey val id: String, val toolName: String, val workspaceId: String?, val decision: String, val scope: String, val createdAt: Long)
 
 @Entity(tableName = "audit_logs", indices = [Index("workspaceId"), Index("conversationId"), Index("timestamp")])
 data class AuditLogEntity(
@@ -46,15 +39,32 @@ data class AuditLogEntity(
 )
 
 @Entity(tableName = "change_sets", indices = [Index("workspaceId"), Index("createdAt")])
-data class ChangeSetEntity(
-    @PrimaryKey val id: String,
+data class ChangeSetEntity(@PrimaryKey val id: String, val workspaceId: String, val filesJson: String, val createdAt: Long, val status: String, val originatingToolCallId: String?, val appliedAt: Long?, val revertedAt: Long?)
+
+@Entity(tableName = "runtime_processes", indices = [Index("workspaceId"), Index("status"), Index("startedAt")])
+data class ProcessMetadataEntity(
+    @PrimaryKey val processId: String,
+    val sessionId: String?,
     val workspaceId: String,
-    val filesJson: String,
-    val createdAt: Long,
+    val command: String,
+    val cwd: String,
     val status: String,
-    val originatingToolCallId: String?,
-    val appliedAt: Long?,
-    val revertedAt: Long?
+    val exitCode: Int?,
+    val startedAt: Long,
+    val finishedAt: Long?,
+    val background: Boolean
+)
+
+@Entity(tableName = "terminal_sessions", indices = [Index("workspaceId"), Index("lastUsedAt")])
+data class TerminalSessionEntity(
+    @PrimaryKey val sessionId: String,
+    val workspaceId: String,
+    val title: String,
+    val cwd: String,
+    val createdAt: Long,
+    val lastUsedAt: Long,
+    val running: Boolean,
+    val exitCode: Int?
 )
 
 @Dao interface ConversationDao {
@@ -121,20 +131,27 @@ data class ChangeSetEntity(
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(item: ChangeSetEntity)
 }
 
+@Dao interface ProcessMetadataDao {
+    @Query("SELECT * FROM runtime_processes WHERE processId = :id") suspend fun get(id: String): ProcessMetadataEntity?
+    @Query("SELECT * FROM runtime_processes WHERE (:workspaceId IS NULL OR workspaceId = :workspaceId) ORDER BY startedAt DESC") suspend fun list(workspaceId: String?): List<ProcessMetadataEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(item: ProcessMetadataEntity)
+    @Query("UPDATE runtime_processes SET status = 'STALE', finishedAt = :now WHERE status IN ('STARTING','RUNNING')") suspend fun markRunningStale(now: Long)
+}
+
+@Dao interface TerminalSessionDao {
+    @Query("SELECT * FROM terminal_sessions WHERE sessionId = :id") suspend fun get(id: String): TerminalSessionEntity?
+    @Query("SELECT * FROM terminal_sessions WHERE (:workspaceId IS NULL OR workspaceId = :workspaceId) ORDER BY lastUsedAt DESC") suspend fun list(workspaceId: String?): List<TerminalSessionEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(item: TerminalSessionEntity)
+    @Query("UPDATE terminal_sessions SET running = 0, lastUsedAt = :now WHERE running = 1") suspend fun markRunningStale(now: Long)
+}
+
 @Database(
     entities = [
-        ConversationEntity::class,
-        MessageEntity::class,
-        ProviderConfigEntity::class,
-        WorkspaceEntity::class,
-        MemoryEntryEntity::class,
-        SkillEntity::class,
-        AppSettingEntity::class,
-        PermissionRuleEntity::class,
-        AuditLogEntity::class,
-        ChangeSetEntity::class
+        ConversationEntity::class, MessageEntity::class, ProviderConfigEntity::class, WorkspaceEntity::class,
+        MemoryEntryEntity::class, SkillEntity::class, AppSettingEntity::class, PermissionRuleEntity::class,
+        AuditLogEntity::class, ChangeSetEntity::class, ProcessMetadataEntity::class, TerminalSessionEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class AgentDatabase : RoomDatabase() {
@@ -148,6 +165,8 @@ abstract class AgentDatabase : RoomDatabase() {
     abstract fun permissionRules(): PermissionRuleDao
     abstract fun auditLogs(): AuditLogDao
     abstract fun changeSets(): ChangeSetDao
+    abstract fun processes(): ProcessMetadataDao
+    abstract fun terminalSessions(): TerminalSessionDao
 }
 
 object DatabaseMigrations {
@@ -167,5 +186,16 @@ object DatabaseMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS index_change_sets_createdAt ON change_sets(createdAt)")
         }
     }
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2)
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS runtime_processes (processId TEXT NOT NULL PRIMARY KEY, sessionId TEXT, workspaceId TEXT NOT NULL, command TEXT NOT NULL, cwd TEXT NOT NULL, status TEXT NOT NULL, exitCode INTEGER, startedAt INTEGER NOT NULL, finishedAt INTEGER, background INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_runtime_processes_workspaceId ON runtime_processes(workspaceId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_runtime_processes_status ON runtime_processes(status)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_runtime_processes_startedAt ON runtime_processes(startedAt)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS terminal_sessions (sessionId TEXT NOT NULL PRIMARY KEY, workspaceId TEXT NOT NULL, title TEXT NOT NULL, cwd TEXT NOT NULL, createdAt INTEGER NOT NULL, lastUsedAt INTEGER NOT NULL, running INTEGER NOT NULL, exitCode INTEGER)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_terminal_sessions_workspaceId ON terminal_sessions(workspaceId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_terminal_sessions_lastUsedAt ON terminal_sessions(lastUsedAt)")
+        }
+    }
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }
