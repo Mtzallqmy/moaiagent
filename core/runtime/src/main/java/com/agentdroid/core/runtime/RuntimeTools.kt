@@ -40,7 +40,12 @@ private abstract class CommandToolBase(protected val services: RuntimeServices) 
         return assessed
     }
 
-    override suspend fun permissionKey(input: JsonObject, context: ToolContext): String? = "${definition.name}:${assessment(input, context).pattern}"
+    override suspend fun permissionKey(input: JsonObject, context: ToolContext): String? {
+        val assessed = assessment(input, context)
+        // Persisted/session permission patterns are risk-bounded so an approval for a MODIFY
+        // variant can never authorize a later DESTRUCTIVE or EXTERNAL variant of that pattern.
+        return "${definition.name}:${effectiveRisk(input, context).name}:${assessed.pattern}"
+    }
 
     override fun auditInputSummary(input: JsonObject, context: ToolContext): String = buildJsonObject {
         put("command", CommandRedactor.redact(input.string("command").orEmpty()))
