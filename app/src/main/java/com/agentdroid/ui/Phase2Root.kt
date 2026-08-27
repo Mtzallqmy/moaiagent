@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -81,6 +82,12 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
                 "diff/{workspaceId}/{changeSetId}",
                 arguments = listOf(navArgument("workspaceId") { type = NavType.StringType }, navArgument("changeSetId") { type = NavType.StringType })
             ) { entry -> DiffScreen(nav, factory, entry.arguments?.getString("workspaceId").orEmpty(), entry.arguments?.getString("changeSetId").orEmpty()) }
+            composable(
+                "terminal/{workspaceId}?cwd={cwd}",
+                arguments = listOf(navArgument("workspaceId") { type = NavType.StringType }, navArgument("cwd") { type = NavType.StringType; defaultValue = "." })
+            ) { entry -> TerminalScreen(nav, entry.arguments?.getString("workspaceId").orEmpty(), entry.arguments?.getString("cwd") ?: ".") }
+            composable("git/{workspaceId}", arguments = listOf(navArgument("workspaceId") { type = NavType.StringType })) { entry -> GitWorkspaceScreen(nav, entry.arguments?.getString("workspaceId").orEmpty()) }
+            composable("runtime") { RuntimeScreen(nav) }
             composable("permissions") { PermissionRulesScreen(nav, factory) }
             composable("classic") { AgentDroidRoot() }
             composable("more") {
@@ -88,6 +95,7 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
                     Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
                     ListItem(headlineContent = { Text(stringResource(R.string.agent_permissions_audit)) }, leadingContent = { Icon(Icons.Default.Security, null) })
                     Button({ nav.navigate("permissions") }) { Text(stringResource(R.string.manage_permissions)) }
+                    Button({ nav.navigate("runtime") }) { Icon(Icons.Default.Terminal, null); Text(stringResource(R.string.open_runtime), Modifier.padding(start = 8.dp)) }
                     OutlinedButton({ nav.navigate("classic") }) { Text(stringResource(R.string.providers_memory_skills_settings)) }
                 }
             }
