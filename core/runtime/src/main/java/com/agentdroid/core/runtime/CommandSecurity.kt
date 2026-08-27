@@ -101,7 +101,9 @@ class CommandClassifier {
     private fun classifyGit(args: List<String>): RiskLevel {
         val sub = args.firstOrNull { !it.startsWith('-') } ?: return RiskLevel.SAFE
         return when (sub) {
-            "status", "diff", "log", "show", "branch", "rev-parse", "ls-files" -> RiskLevel.SAFE
+            "status", "log", "rev-parse", "ls-files" -> RiskLevel.SAFE
+            "diff", "show" -> if (args.any(::isGitOutputOption)) RiskLevel.MODIFY else RiskLevel.SAFE
+            "branch" -> classifyGitBranch(args.dropWhile { it != "branch" }.drop(1))
             "add", "commit", "checkout", "switch", "init", "tag" -> RiskLevel.MODIFY
             "restore" -> if (args.contains("--staged") && args.none { it == "--worktree" }) RiskLevel.MODIFY else RiskLevel.DESTRUCTIVE
             "reset", "clean", "rebase" -> RiskLevel.DESTRUCTIVE
@@ -109,6 +111,35 @@ class CommandClassifier {
             else -> RiskLevel.SENSITIVE
         }
     }
+
+    private fun classifyGitBranch(args: List<String>): RiskLevel {
+        if (args.any { it == "-d" || it == "-D" || it == "--delete" }) return RiskLevel.DESTRUCTIVE
+        if (args.any(::isGitOutputOption)) return RiskLevel.MODIFY
+        if (args.isEmpty()) return RiskLevel.SAFE
+        val readOnlyFlags = setOf(
+            "-a", "--all", "-r", "--remotes", "--list", "--show-current", "--contains",
+            "--no-contains", "--merged", "--no-merged", "-v", "-vv", "--verbose", "--color",
+            "--no-color", "--sort", "--format", "--column", "--no-column", "--ignore-case"
+        )
+        var index = 0
+        while (index < args.size) {
+            val arg = args[index]
+            if (arg in setOf("--contains", "--no-contains", "--merged", "--no-merged", "--sort", "--format")) {
+                index += 2
+                continue
+            }
+            if (arg in readOnlyFlags || readOnlyFlags.any { flag -> arg.startsWith("$flag=") }) {
+                index++
+                continue
+            }
+            // A branch name/ref outside an explicit listing query creates, renames, or otherwise mutates refs.
+            return RiskLevel.MODIFY
+        }
+        return RiskLevel.SAFE
+    }
+
+    private fun isGitOutputOption(arg: String): Boolean =
+        arg == "--output" || arg.startsWith("--output=")
 
     private fun classifyFind(args: List<String>): RiskLevel = when { args.contains("-delete") -> RiskLevel.DESTRUCTIVE; args.any { it == "-exec" || it == "-execdir" } -> RiskLevel.SENSITIVE; else -> RiskLevel.SAFE }
 
@@ -147,13 +178,16 @@ class CommandPolicy(private val classifier: CommandClassifier = CommandClassifie
                 val executable = File(resolvedCwd, part.executable).canonicalFile
                 if (!isInside(root, executable)) return assessment.copy(blockedReason = "Executable escapes workspace")
             }
+            if (requestsSymlinkTraversal(part)) {
+                return assessment.copy(blockedReason = "Following symbolic links recursively is not allowed for agent commands")
+            }
             for (raw in part.words.drop(1)) {
                 if (raw in setOf(">", ">>", "2>", "2>>", "<")) continue
                 val value = raw.substringAfter('=', raw)
                 if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("ssh://")) continue
                 if (containsParentSegment(value)) return assessment.copy(blockedReason = "Path traversal is not allowed: $value")
                 if (File(value).isAbsolute) return assessment.copy(blockedReason = "Absolute paths are not allowed: $value")
-                if (looksLikePath(value)) {
+                if (looksLikePath(value) || isExistingPathArgument(resolvedCwd, value)) {
                     val target = File(resolvedCwd, value).canonicalFile
                     if (!isInside(root, target)) return assessment.copy(blockedReason = "Path escapes workspace: $value")
                 }
@@ -173,6 +207,22 @@ class CommandPolicy(private val classifier: CommandClassifier = CommandClassifie
     private fun isInside(root: File, child: File): Boolean = child == root || child.path.startsWith(root.path + File.separator)
     private fun containsParentSegment(value: String): Boolean = value.replace('\\', '/').split('/').any { it == ".." }
     private fun looksLikePath(value: String): Boolean = value == "." || value.startsWith("./") || '/' in value || '\\' in value || value.startsWith(".")
+    private fun isExistingPathArgument(cwd: File, value: String): Boolean {
+        if (value.isBlank() || value.startsWith("-")) return false
+        val candidate = File(cwd, value)
+        return candidate.exists() || java.nio.file.Files.isSymbolicLink(candidate.toPath())
+    }
+
+    private fun requestsSymlinkTraversal(command: ParsedCommand): Boolean {
+        val executable = command.executable.substringAfterLast('/')
+        val args = command.words.drop(1)
+        return when (executable) {
+            "find" -> args.any { it == "-L" || it == "-H" }
+            "grep" -> args.any { it == "-R" || it == "--dereference-recursive" }
+            "ls" -> args.any { flag -> flag == "--dereference" || (flag.startsWith("-") && !flag.startsWith("--") && 'L' in flag) }
+            else -> false
+        }
+    }
 }
 
 object CommandRedactor {
