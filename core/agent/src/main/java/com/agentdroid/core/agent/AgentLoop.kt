@@ -80,7 +80,7 @@ class AgentLoop(
                             val result = ToolResult.failure(AgentError.toolNotFound(call.name))
                             transcript += toolMessage(call, result)
                             consecutiveFailures++
-                            audit(session, call, result, 0, "NOT_FOUND", PermissionDecision.DENY)
+                            audit(session, call, result, 0, "NOT_FOUND", PermissionDecision.DENY, null)
                             emit(AgentEvent.ToolFinished(call, result, 0))
                             emit(AgentEvent.Timeline(AgentStep(result.summary, AgentStepStatus.FAILED, call.id)))
                             if (failureLimitReached(call, result, consecutiveFailures, repeatedFailures)) {
@@ -98,7 +98,7 @@ class AgentLoop(
                             val result = ToolResult.failure(error)
                             transcript += toolMessage(call, result)
                             consecutiveFailures++
-                            audit(session, call, result, 0, "VALIDATION_FAILED", PermissionDecision.DENY)
+                            audit(session, call, result, 0, "VALIDATION_FAILED", PermissionDecision.DENY, toolContext)
                             emit(AgentEvent.ToolFinished(call, result, 0))
                             emit(AgentEvent.Timeline(AgentStep(result.summary, AgentStepStatus.FAILED, call.id)))
                             if (failureLimitReached(call, result, consecutiveFailures, repeatedFailures)) {
@@ -107,19 +107,32 @@ class AgentLoop(
                             continue
                         }
 
-                        val definition = tool.definition
+                        val riskResult = toolRegistry.effectiveRisk(call, toolContext)
+                        val riskFailure = riskResult.exceptionOrNull()
+                        if (riskFailure != null) {
+                            val error = (riskFailure as? ToolRegistryException)?.agentError ?: AgentError.internal(riskFailure.message ?: "Tool risk classification failed")
+                            val result = ToolResult.failure(error)
+                            transcript += toolMessage(call, result)
+                            consecutiveFailures++
+                            audit(session, call, result, 0, "CLASSIFICATION_FAILED", PermissionDecision.DENY, toolContext)
+                            emit(AgentEvent.ToolFinished(call, result, 0))
+                            continue
+                        }
+                        val effectiveRisk = riskResult.getOrThrow()
+                        val effectiveDefinition = tool.definition.copy(riskLevel = effectiveRisk)
                         val permissionRequest = PermissionRequest(
                             requestId = UUID.randomUUID().toString(),
                             toolCall = call,
-                            definition = definition,
+                            definition = effectiveDefinition,
                             workspaceId = session.workspaceId,
                             conversationId = session.conversationId,
                             sessionId = session.id,
                             reason = call.input["reason"]?.jsonPrimitive?.contentOrNull,
-                            preview = previewResult.getOrNull()
+                            preview = previewResult.getOrNull(),
+                            ruleKey = runCatching { toolRegistry.permissionKey(call, toolContext) }.getOrNull()
                         )
-                        if (definition.riskLevel != RiskLevel.SAFE) {
-                            emit(AgentEvent.Timeline(AgentStep("Waiting for approval: ${definition.name}", AgentStepStatus.WAITING_PERMISSION, call.id)))
+                        if (effectiveRisk != RiskLevel.SAFE) {
+                            emit(AgentEvent.Timeline(AgentStep("Waiting for approval: ${effectiveDefinition.name}", AgentStepStatus.WAITING_PERMISSION, call.id)))
                             emit(AgentEvent.PermissionRequired(permissionRequest))
                         }
                         val permission = permissionGateway.authorize(permissionRequest)
@@ -127,7 +140,7 @@ class AgentLoop(
                             val result = ToolResult.failure(AgentError.permissionDenied(call.name))
                             transcript += toolMessage(call, result)
                             consecutiveFailures++
-                            audit(session, call, result, 0, "DENIED", permission.decision)
+                            audit(session, call, result, 0, "DENIED", permission.decision, toolContext)
                             emit(AgentEvent.ToolFinished(call, result, 0))
                             emit(AgentEvent.Timeline(AgentStep(result.summary, AgentStepStatus.FAILED, call.id)))
                             if (failureLimitReached(call, result, consecutiveFailures, repeatedFailures)) {
@@ -139,7 +152,7 @@ class AgentLoop(
                         val started = System.nanoTime()
                         val result = toolRegistry.execute(call, toolContext)
                         val durationMs = (System.nanoTime() - started) / 1_000_000
-                        audit(session, call, result, durationMs, if (result.success) "SUCCEEDED" else "FAILED", permission.decision)
+                        audit(session, call, result, durationMs, if (result.success) "SUCCEEDED" else "FAILED", permission.decision, toolContext)
                         emit(AgentEvent.ToolFinished(call, result, durationMs))
                         emit(AgentEvent.Timeline(AgentStep(result.summary, if (result.success) AgentStepStatus.SUCCEEDED else AgentStepStatus.FAILED, call.id)))
                         transcript += toolMessage(call, result)
@@ -166,8 +179,36 @@ class AgentLoop(
         }
     }
 
-    private suspend fun audit(session: AgentSession, call: ToolCall, result: ToolResult, durationMs: Long, status: String, permission: PermissionDecision) {
-        auditSink.record(AuditEntry(call.id, call.name, summarizeInput(call), result.summary.take(500), durationMs, status, permission, System.currentTimeMillis(), session.workspaceId, session.conversationId))
+    private suspend fun audit(
+        session: AgentSession,
+        call: ToolCall,
+        result: ToolResult,
+        durationMs: Long,
+        status: String,
+        permission: PermissionDecision,
+        toolContext: ToolContext?
+    ) {
+        val input = toolContext?.let { toolRegistry.auditInputSummary(call, it) } ?: summarizeInput(call)
+        val metadata = buildMap {
+            listOf("command", "cwd", "exitCode", "processId", "sessionId", "gitAction", "timedOut").forEach { key ->
+                result.output[key]?.let { value -> put(key, value.toString().trim('"').take(500)) }
+            }
+        }
+        auditSink.record(
+            AuditEntry(
+                call.id,
+                call.name,
+                input.take(1_000),
+                result.summary.take(500),
+                durationMs,
+                status,
+                permission,
+                System.currentTimeMillis(),
+                session.workspaceId,
+                session.conversationId,
+                metadata
+            )
+        )
     }
 
     private fun toolMessage(call: ToolCall, result: ToolResult): AgentMessage {
@@ -195,17 +236,21 @@ class AgentLoop(
 
     private fun stepLabel(definition: ToolDefinition, call: ToolCall): String {
         val path = call.input["path"]?.let { (it as? JsonPrimitive)?.contentOrNull }
+        val command = call.input["command"]?.let { (it as? JsonPrimitive)?.contentOrNull }
         return when (definition.category) {
             ToolCategory.FILE_READ -> "Reading ${path ?: "workspace"}"
             ToolCategory.FILE_SEARCH -> "Searching workspace"
             ToolCategory.FILE_MODIFY -> "Preparing ${definition.name}"
             ToolCategory.FILE_DESTRUCTIVE -> "Preparing destructive change"
+            ToolCategory.SHELL -> "Running ${command?.take(80) ?: definition.name}"
+            ToolCategory.PROCESS -> "Managing process"
+            ToolCategory.GIT_READ, ToolCategory.GIT_MODIFY, ToolCategory.GIT_DESTRUCTIVE -> "Git: ${definition.name.removePrefix("git_")}"
             else -> "Running ${definition.name}"
         }
     }
 
     private fun summarizeInput(call: ToolCall): String {
-        val safeKeys = listOf("path", "source", "destination", "query", "glob", "startLine", "endLine", "overwrite", "createParents")
+        val safeKeys = listOf("path", "source", "destination", "query", "glob", "startLine", "endLine", "overwrite", "createParents", "cwd", "processId")
         return buildJsonObject { safeKeys.forEach { key -> call.input[key]?.let { put(key, it) } } }.toString().take(1_000)
     }
 }
