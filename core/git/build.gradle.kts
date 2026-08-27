@@ -14,6 +14,7 @@ dependencies {
     implementation(libs.jgit)
     implementation(libs.kotlinx.coroutines)
     implementation(libs.serialization.json)
+    testImplementation(project(":core:runtime"))
     testImplementation("junit:junit:4.13.2")
     testImplementation(libs.kotlinx.coroutines)
 }
