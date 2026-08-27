@@ -35,7 +35,8 @@ data class AuditLogEntity(
     val permissionDecision: String,
     val timestamp: Long,
     val workspaceId: String,
-    val conversationId: String
+    val conversationId: String,
+    val metadataJson: String = "{}"
 )
 
 @Entity(tableName = "change_sets", indices = [Index("workspaceId"), Index("createdAt")])
@@ -188,6 +189,7 @@ object DatabaseMigrations {
     }
     val MIGRATION_2_3 = object : Migration(2, 3) {
         override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE audit_logs ADD COLUMN metadataJson TEXT NOT NULL DEFAULT '{}'")
             db.execSQL("CREATE TABLE IF NOT EXISTS runtime_processes (processId TEXT NOT NULL PRIMARY KEY, sessionId TEXT, workspaceId TEXT NOT NULL, command TEXT NOT NULL, cwd TEXT NOT NULL, status TEXT NOT NULL, exitCode INTEGER, startedAt INTEGER NOT NULL, finishedAt INTEGER, background INTEGER NOT NULL)")
             db.execSQL("CREATE INDEX IF NOT EXISTS index_runtime_processes_workspaceId ON runtime_processes(workspaceId)")
             db.execSQL("CREATE INDEX IF NOT EXISTS index_runtime_processes_status ON runtime_processes(status)")
