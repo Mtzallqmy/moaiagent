@@ -619,6 +619,8 @@ private class WebViewBrowserSession(
             runtimes[tabId]?.pendingNavigation?.completeExceptionally(BrowserException(mapped))
         }
 
+        // WebViewClient only dispatches this callback on API 27+, where SafeBrowsingResponse exists.
+        @SuppressLint("NewApi")
         override fun onSafeBrowsingHit(view: WebView, request: WebResourceRequest, threatType: Int, callback: SafeBrowsingResponse) {
             callback.backToSafety(true)
             val error = BrowserError.UnsafeUrl("Android Safe Browsing blocked a dangerous page", request.url.toString(), request.url.scheme)
