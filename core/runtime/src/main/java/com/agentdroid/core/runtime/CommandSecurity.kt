@@ -18,9 +18,7 @@ data class CommandAssessment(
     val cwd: File,
     val commands: List<ParsedCommand>,
     val blockedReason: String? = null
-) {
-    val allowed: Boolean get() = blockedReason == null
-}
+) { val allowed: Boolean get() = blockedReason == null }
 
 class CommandParseException(message: String) : IllegalArgumentException(message)
 
@@ -34,24 +32,11 @@ object CommandTokenizer {
         val result = mutableListOf<ParsedCommand>()
         val words = mutableListOf<String>()
         val operatorsAfter = mutableListOf<String>()
-        fun flush() {
-            if (words.isNotEmpty()) {
-                result += ParsedCommand(words.toList(), operatorsAfter.toList())
-                words.clear(); operatorsAfter.clear()
-            }
-        }
+        fun flush() { if (words.isNotEmpty()) { result += ParsedCommand(words.toList(), operatorsAfter.toList()); words.clear(); operatorsAfter.clear() } }
         tokens.forEach { token ->
             if (token.kind == ShellTokenKind.WORD) words += token.text
-            else {
-                val op = token.text
-                if (op in setOf(";", "&&", "||", "|", "&")) {
-                    operatorsAfter += op
-                    flush()
-                } else {
-                    // Keep redirects on the command so classification can escalate writes.
-                    words += op
-                }
-            }
+            else if (token.text in setOf(";", "&&", "||", "|", "&")) { operatorsAfter += token.text; flush() }
+            else words += token.text
         }
         flush()
         if (result.isEmpty()) throw CommandParseException("No executable command found")
@@ -59,45 +44,22 @@ object CommandTokenizer {
     }
 
     private fun lex(input: String): List<ShellToken> {
-        val out = mutableListOf<ShellToken>()
-        val current = StringBuilder()
-        var quote: Char? = null
-        var escaped = false
-        var index = 0
-        fun flushWord() {
-            if (current.isNotEmpty()) {
-                out += ShellToken(current.toString(), ShellTokenKind.WORD)
-                current.setLength(0)
-            }
-        }
+        val out = mutableListOf<ShellToken>(); val current = StringBuilder(); var quote: Char? = null; var escaped = false; var index = 0
+        fun flushWord() { if (current.isNotEmpty()) { out += ShellToken(current.toString(), ShellTokenKind.WORD); current.setLength(0) } }
         while (index < input.length) {
             val ch = input[index]
-            if (escaped) {
-                current.append(ch); escaped = false; index++; continue
-            }
-            if (ch == '\\' && quote != '\'') {
-                escaped = true; index++; continue
-            }
-            if (quote != null) {
-                if (ch == quote) quote = null else current.append(ch)
-                index++; continue
-            }
-            if (ch == '\'' || ch == '"') {
-                quote = ch; index++; continue
-            }
-            if (ch.isWhitespace()) {
-                flushWord(); index++; continue
-            }
+            if (escaped) { current.append(ch); escaped = false; index++; continue }
+            if (ch == '\\' && quote != '\'') { escaped = true; index++; continue }
+            if (quote != null) { if (ch == quote) quote = null else current.append(ch); index++; continue }
+            if (ch == '\'' || ch == '"') { quote = ch; index++; continue }
+            if (ch.isWhitespace()) { flushWord(); index++; continue }
             val op = operators.firstOrNull { input.startsWith(it, index) }
-            if (op != null) {
-                flushWord(); out += ShellToken(op, ShellTokenKind.OPERATOR); index += op.length; continue
-            }
+            if (op != null) { flushWord(); out += ShellToken(op, ShellTokenKind.OPERATOR); index += op.length; continue }
             current.append(ch); index++
         }
         if (escaped) throw CommandParseException("Trailing escape")
         if (quote != null) throw CommandParseException("Unterminated quote")
-        flushWord()
-        return out
+        flushWord(); return out
     }
 }
 
@@ -112,11 +74,13 @@ class CommandClassifier {
         val parsed = try { CommandTokenizer.parse(command) } catch (failure: CommandParseException) {
             return CommandAssessment(RiskLevel.SENSITIVE, exactPattern(command), command.trim(), cwd, emptyList(), failure.message)
         }
-        var risk = RiskLevel.SAFE
-        var blocked: String? = null
+        var risk = RiskLevel.SAFE; var blocked: String? = null
         parsed.forEach { part ->
-            val executable = part.executable.substringAfterLast('/')
+            val rawExecutable = part.executable
+            val executable = rawExecutable.substringAfterLast('/')
             val partRisk = when {
+                File(rawExecutable).isAbsolute -> RiskLevel.SENSITIVE
+                rawExecutable.startsWith("./") -> RiskLevel.MODIFY
                 executable in wrappers -> RiskLevel.SENSITIVE.also { blocked = "Nested shell/execution wrapper '$executable' is not allowed for agent commands" }
                 executable == "git" -> classifyGit(part.words.drop(1))
                 executable == "find" -> classifyFind(part.words.drop(1)).also { if (part.words.any { it == "-exec" || it == "-execdir" }) blocked = "find -exec is not allowed for agent commands" }
@@ -125,7 +89,6 @@ class CommandClassifier {
                 executable in modify -> RiskLevel.MODIFY
                 executable in destructive -> RiskLevel.DESTRUCTIVE
                 executable in external -> RiskLevel.EXTERNAL
-                executable.startsWith("./") || '/' in executable -> RiskLevel.MODIFY
                 else -> RiskLevel.SENSITIVE
             }
             risk = maxRisk(risk, partRisk)
@@ -147,14 +110,12 @@ class CommandClassifier {
         }
     }
 
-    private fun classifyFind(args: List<String>): RiskLevel = when {
-        args.contains("-delete") -> RiskLevel.DESTRUCTIVE
-        args.any { it == "-exec" || it == "-execdir" } -> RiskLevel.SENSITIVE
-        else -> RiskLevel.SAFE
-    }
+    private fun classifyFind(args: List<String>): RiskLevel = when { args.contains("-delete") -> RiskLevel.DESTRUCTIVE; args.any { it == "-exec" || it == "-execdir" } -> RiskLevel.SENSITIVE; else -> RiskLevel.SAFE }
 
     private fun patternFor(command: ParsedCommand): String {
-        val executable = command.executable.substringAfterLast('/')
+        val raw = command.executable
+        val executable = raw.substringAfterLast('/')
+        if (raw.startsWith("./")) return if (command.words.size > 1) "$raw *" else raw
         if (executable == "git") {
             val sub = command.words.drop(1).firstOrNull { !it.startsWith('-') }
             if (sub != null) return if (command.words.size > 2) "git $sub *" else "git $sub"
@@ -163,17 +124,9 @@ class CommandClassifier {
     }
 
     private fun exactPattern(command: String): String = "exact:${sha256(CommandRedactor.redact(command)).take(20)}"
-
-    private fun normalize(commands: List<ParsedCommand>): String = commands.joinToString(" ; ") { part -> part.words.joinToString(" ") }
-
+    private fun normalize(commands: List<ParsedCommand>): String = commands.joinToString(" ; ") { it.words.joinToString(" ") }
     private fun maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel = if (rank(a) >= rank(b)) a else b
-    private fun rank(risk: RiskLevel) = when (risk) {
-        RiskLevel.SAFE -> 0
-        RiskLevel.MODIFY -> 1
-        RiskLevel.EXTERNAL -> 2
-        RiskLevel.SENSITIVE -> 3
-        RiskLevel.DESTRUCTIVE -> 4
-    }
+    private fun rank(risk: RiskLevel) = when (risk) { RiskLevel.SAFE -> 0; RiskLevel.MODIFY -> 1; RiskLevel.EXTERNAL -> 2; RiskLevel.SENSITIVE -> 3; RiskLevel.DESTRUCTIVE -> 4 }
 }
 
 class CommandPolicy(private val classifier: CommandClassifier = CommandClassifier()) {
@@ -188,8 +141,11 @@ class CommandPolicy(private val classifier: CommandClassifier = CommandClassifie
         val assessment = classifier.classify(command, resolvedCwd)
         if (!assessment.allowed) return assessment
         for (part in assessment.commands) {
-            if (part.executable.substringAfterLast('/') in setOf("sh", "bash", "dash", "zsh", "su", "env", "xargs", "exec")) {
-                return assessment.copy(blockedReason = "Execution wrappers are not allowed for agent commands")
+            if (File(part.executable).isAbsolute) return assessment.copy(blockedReason = "Absolute executable paths are not allowed for agent commands")
+            if (part.executable.substringAfterLast('/') in setOf("sh", "bash", "dash", "zsh", "su", "env", "xargs", "exec")) return assessment.copy(blockedReason = "Execution wrappers are not allowed for agent commands")
+            if (part.executable.startsWith("./")) {
+                val executable = File(resolvedCwd, part.executable).canonicalFile
+                if (!isInside(root, executable)) return assessment.copy(blockedReason = "Executable escapes workspace")
             }
             for (raw in part.words.drop(1)) {
                 if (raw in setOf(">", ">>", "2>", "2>>", "<")) continue
@@ -206,20 +162,14 @@ class CommandPolicy(private val classifier: CommandClassifier = CommandClassifie
         return assessment
     }
 
-    fun resolveCwd(workspaceRoot: File, cwd: String): File = resolveWithin(workspaceRoot.canonicalFile, cwd)
-        ?: throw SecurityException("Working directory escapes workspace")
-
-    private fun blocked(command: String, cwd: File, reason: String) = CommandAssessment(
-        RiskLevel.SENSITIVE, "exact:${sha256(CommandRedactor.redact(command)).take(20)}", CommandRedactor.redact(command), cwd, emptyList(), reason
-    )
-
+    fun resolveCwd(workspaceRoot: File, cwd: String): File = resolveWithin(workspaceRoot.canonicalFile, cwd) ?: throw SecurityException("Working directory escapes workspace")
+    private fun blocked(command: String, cwd: File, reason: String) = CommandAssessment(RiskLevel.SENSITIVE, "exact:${sha256(CommandRedactor.redact(command)).take(20)}", CommandRedactor.redact(command), cwd, emptyList(), reason)
     private fun resolveWithin(root: File, path: String): File? {
         if (path.isBlank() || path == ".") return root
         if (File(path).isAbsolute || containsParentSegment(path)) return null
         val target = File(root, path).canonicalFile
         return target.takeIf { isInside(root, it) }
     }
-
     private fun isInside(root: File, child: File): Boolean = child == root || child.path.startsWith(root.path + File.separator)
     private fun containsParentSegment(value: String): Boolean = value.replace('\\', '/').split('/').any { it == ".." }
     private fun looksLikePath(value: String): Boolean = value == "." || value.startsWith("./") || '/' in value || '\\' in value || value.startsWith(".")
@@ -230,7 +180,6 @@ object CommandRedactor {
     private val envSecret = Regex("(?i)\\b([A-Z0-9_]*(?:TOKEN|PASSWORD|PASSWD|SECRET|API_KEY|APIKEY|AUTHORIZATION)[A-Z0-9_]*=)([^\\s]+)")
     private val bearer = Regex("(?i)(Bearer\\s+)[A-Za-z0-9._~+\\-/=]+")
     private val urlCredentials = Regex("(https?://[^:/\\s]+:)([^@/\\s]+)(@)")
-
     fun redact(command: String): String = command
         .replace(optionSecret) { "${it.groupValues[1]}***" }
         .replace(envSecret) { "${it.groupValues[1]}***" }
@@ -243,7 +192,6 @@ object LogRedactor {
         Regex("(?i)(authorization\\s*[:=]\\s*)([^\\s]+)"),
         Regex("(?i)((?:api[-_]?key|token|password|passwd|secret)\\s*[:=]\\s*)([^\\s]+)")
     )
-
     fun redact(text: String): String {
         var value = CommandRedactor.redact(text)
         genericSecrets.forEach { pattern -> value = value.replace(pattern) { "${it.groupValues[1]}***" } }
@@ -251,5 +199,4 @@ object LogRedactor {
     }
 }
 
-private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
-    .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
