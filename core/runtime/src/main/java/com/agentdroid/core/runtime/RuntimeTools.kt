@@ -1,7 +1,9 @@
 package com.agentdroid.core.runtime
 
 import com.agentdroid.core.agent.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -97,6 +99,8 @@ private class RunCommandTool(services: RuntimeServices) : CommandToolBase(servic
                 context.workspaceId,
                 context.sessionId
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (failure: ProcessLimitException) {
             return ToolResult.failure(AgentError(AgentErrorCode.PROCESS_LIMIT_REACHED, failure.message.orEmpty(), "The process limit was reached.", true))
         } catch (failure: Throwable) {
@@ -145,6 +149,8 @@ private class StartProcessTool(services: RuntimeServices) : CommandToolBase(serv
                 context.sessionId
             )
             ToolResult.success("Background process started", processJson(snapshot, snapshot.command, relativeCwd(services.workspaceRoot(context.workspaceId), assessed.cwd)))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (failure: ProcessLimitException) {
             ToolResult.failure(AgentError(AgentErrorCode.PROCESS_LIMIT_REACHED, failure.message.orEmpty(), "The background process limit was reached.", true))
         } catch (failure: Throwable) {
@@ -231,7 +237,7 @@ private fun processJson(snapshot: ProcessSnapshot, command: String, cwd: String)
 private fun schema(required: List<String> = emptyList(), fields: Map<String, String> = emptyMap()) = buildJsonObject {
     put("type", "object")
     put("properties", buildJsonObject { fields.forEach { (key, type) -> put(key, buildJsonObject { put("type", type) }) } })
-    if (required.isNotEmpty()) put("required", buildJsonArray { required.forEach(::add) })
+    if (required.isNotEmpty()) put("required", buildJsonArray { required.forEach { add(JsonPrimitive(it)) } })
 }
 
 private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
