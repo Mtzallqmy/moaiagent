@@ -143,6 +143,8 @@ private class GitRestoreTool(services: GitServices) : GitTool(services) {
     override val definition = ToolDefinition("git_restore", "Restore workspace paths or unstage them. Worktree restore discards local changes.", schema(listOf("paths"), mapOf("paths" to "array", "staged" to "boolean", "reason" to "string")), RiskLevel.DESTRUCTIVE, ToolCategory.GIT_DESTRUCTIVE)
     override fun availableInMode(mode: AgentMode) = mode == AgentMode.AGENT
     override suspend fun effectiveRisk(input: JsonObject, context: ToolContext) = if (input.bool("staged") == true) RiskLevel.MODIFY else RiskLevel.DESTRUCTIVE
+    override suspend fun permissionKey(input: JsonObject, context: ToolContext): String =
+        if (input.bool("staged") == true) "git_restore:MODIFY:staged" else "git_restore:DESTRUCTIVE:worktree"
     override suspend fun preview(input: JsonObject, context: ToolContext): ToolPreview {
         val paths = input.strings("paths"); paths.forEach { validateGitPath(root(context), it) }
         return ToolPreview(if (input.bool("staged") == true) "Unstage ${paths.size} paths" else "Discard changes in ${paths.size} paths", metadata = mapOf("gitAction" to "restore"))
