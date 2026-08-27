@@ -48,7 +48,7 @@ espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref =
 appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 material = { module = "com.google.android.material:material", version.ref = "material" }
 java-diff-utils = { module = "io.github.java-diff-utils:java-diff-utils", version.ref = "javaDiffUtils" }
-termux-terminal-view = { module = "com.termux:terminal-view", version.ref = "termuxTerminal" }
+termux-terminal-view = { module = "com.termux.termux-app:terminal-view", version.ref = "termuxTerminal" }
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
 
 [plugins]
