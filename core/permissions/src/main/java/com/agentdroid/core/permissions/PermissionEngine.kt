@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Serializable
 data class PermissionRule(
     val id: String = UUID.randomUUID().toString(),
+    /** Tool name for static tools, or a constrained dynamic key such as run_command:git diff *. */
     val toolName: String,
     val workspaceId: String? = null,
     val decision: PermissionDecision,
@@ -79,19 +80,24 @@ class PermissionEngine(
     private val prompter: PermissionPrompter,
     private val defaultPolicy: (RiskLevel) -> PermissionDecision = ::defaultPermissionForRisk
 ) : PermissionGateway {
-    private data class SessionKey(val sessionId: String, val workspaceId: String, val toolName: String)
+    private data class SessionKey(val sessionId: String, val workspaceId: String, val permissionKey: String)
     private val sessionRules = ConcurrentHashMap<SessionKey, PermissionDecision>()
 
     override suspend fun authorize(request: PermissionRequest): PermissionOutcome {
-        val key = SessionKey(request.sessionId, request.workspaceId, request.definition.name)
+        val permissionKey = request.ruleKey?.takeIf(::isSafePermissionKey) ?: request.definition.name
+        val key = SessionKey(request.sessionId, request.workspaceId, permissionKey)
         sessionRules[key]?.let { return PermissionOutcome(it, PermissionScope.SESSION, "session") }
 
         val stored = ruleStore.list()
             .asSequence()
             .filter { it.scope == PermissionScope.ALWAYS }
-            .filter { it.toolName == request.definition.name || it.toolName == "*" }
+            .filter { it.toolName == permissionKey || it.toolName == request.definition.name || it.toolName == "*" }
             .filter { it.workspaceId == null || it.workspaceId == request.workspaceId }
-            .sortedWith(compareByDescending<PermissionRule> { it.workspaceId != null }.thenByDescending { it.createdAt })
+            .sortedWith(
+                compareByDescending<PermissionRule> { it.toolName == permissionKey }
+                    .thenByDescending { it.workspaceId != null }
+                    .thenByDescending { it.createdAt }
+            )
             .firstOrNull()
         if (stored != null) return PermissionOutcome(stored.decision, PermissionScope.ALWAYS, "stored")
 
@@ -106,7 +112,7 @@ class PermissionEngine(
                         PermissionScope.SESSION -> sessionRules[key] = PermissionDecision.ALLOW
                         PermissionScope.ALWAYS -> ruleStore.save(
                             PermissionRule(
-                                toolName = request.definition.name,
+                                toolName = permissionKey,
                                 workspaceId = request.workspaceId,
                                 decision = PermissionDecision.ALLOW,
                                 scope = PermissionScope.ALWAYS
@@ -124,11 +130,19 @@ class PermissionEngine(
     }
 
     suspend fun setAlways(toolName: String, workspaceId: String?, decision: PermissionDecision) {
+        require(isSafePermissionKey(toolName)) { "Unsafe permission rule key" }
         ruleStore.save(PermissionRule(toolName = toolName, workspaceId = workspaceId, decision = decision, scope = PermissionScope.ALWAYS))
     }
 
     suspend fun removeRule(ruleId: String) = ruleStore.delete(ruleId)
     suspend fun rules(): List<PermissionRule> = ruleStore.list()
+
+    private fun isSafePermissionKey(value: String): Boolean {
+        if (value.length !in 1..300 || value.any { it == '\n' || it == '\r' || it == '\u0000' }) return false
+        // Dynamic wildcard keys may contain only a final argument wildcard; broad '*' alone falls back to static tool rules.
+        val stars = value.count { it == '*' }
+        return stars == 0 || (stars == 1 && value.endsWith(" *") && value.substringBeforeLast(" *").isNotBlank())
+    }
 }
 
 fun defaultPermissionForRisk(risk: RiskLevel): PermissionDecision = when (risk) {
