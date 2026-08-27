@@ -66,6 +66,7 @@ class ChangeSetManager(
 ) {
     suspend fun propose(files: List<FileChange>, originatingToolCallId: String? = null): ChangeSet {
         require(files.isNotEmpty()) { "ChangeSet must contain at least one change" }
+        validateNoOverlappingTargets(files)
         val changeSet = ChangeSet(workspaceId = workspaceId, files = files, originatingToolCallId = originatingToolCallId)
         store.save(changeSet)
         return changeSet
@@ -77,17 +78,22 @@ class ChangeSetManager(
     suspend fun accept(id: String): ChangeSet {
         val current = requireProposed(id)
         return try {
+            preflightApply(current.files)
             var applied = current
+            val completed = mutableListOf<FileChange>()
             current.files.forEachIndexed { index, change ->
                 val appliedChange = applyChange(current.id, change)
+                completed += appliedChange
                 if (appliedChange !== change) applied = applied.copy(files = applied.files.toMutableList().also { it[index] = appliedChange })
             }
             applied = applied.copy(status = ChangeSetStatus.APPLIED, appliedAt = System.currentTimeMillis())
             store.save(applied)
             applied
-        } catch (conflict: ToolRegistryException) {
-            store.save(current.copy(status = ChangeSetStatus.CONFLICTED))
-            throw conflict
+        } catch (failure: Throwable) {
+            val conflicted = current.copy(status = ChangeSetStatus.CONFLICTED)
+            store.save(conflicted)
+            if (failure is ToolRegistryException) throw failure
+            throw ToolRegistryException(AgentError.io("Failed to apply ChangeSet $id: ${failure.message}"))
         }
     }
 
@@ -116,15 +122,18 @@ class ChangeSetManager(
 
     suspend fun revert(id: String): ChangeSet {
         val current = store.get(id) ?: throw ToolRegistryException(AgentError.validation("Unknown ChangeSet: $id"))
+        if (current.workspaceId != workspaceId) throw ToolRegistryException(AgentError.workspaceViolation("ChangeSet belongs to another workspace"))
         if (current.status != ChangeSetStatus.APPLIED) throw ToolRegistryException(AgentError.validation("Only applied ChangeSets can be reverted"))
         return try {
+            preflightRevert(current)
             current.files.asReversed().forEach { revertChange(current.id, it) }
             val reverted = current.copy(status = ChangeSetStatus.REVERTED, revertedAt = System.currentTimeMillis())
             store.save(reverted)
             reverted
-        } catch (conflict: ToolRegistryException) {
+        } catch (failure: Throwable) {
             store.save(current.copy(status = ChangeSetStatus.CONFLICTED))
-            throw conflict
+            if (failure is ToolRegistryException) throw failure
+            throw ToolRegistryException(AgentError.io("Failed to revert ChangeSet $id: ${failure.message}"))
         }
     }
 
@@ -135,31 +144,82 @@ class ChangeSetManager(
         return current
     }
 
+    private fun validateNoOverlappingTargets(files: List<FileChange>) {
+        val claimed = mutableSetOf<String>()
+        files.forEach { change ->
+            val source = normalized(change.path)
+            if (!claimed.add(source)) throw ToolRegistryException(AgentError.validation("ChangeSet contains overlapping path: ${change.path}"))
+            change.destinationPath?.let { destination ->
+                val target = normalized(destination)
+                if (!claimed.add(target)) throw ToolRegistryException(AgentError.validation("ChangeSet contains overlapping destination: $destination"))
+            }
+        }
+    }
+
+    private fun preflightApply(files: List<FileChange>) {
+        files.forEach { change ->
+            when (change.changeType) {
+                FileChangeType.CREATE -> {
+                    if (fileSystem.exists(change.path)) conflict("Cannot create ${change.path}: path now exists")
+                    if (!change.createParents) ensureParentExists(change.path)
+                }
+                FileChangeType.MODIFY -> ensureHash(change.path, change.beforeHash)
+                FileChangeType.MOVE -> {
+                    ensureFingerprint(change.path, change.beforeHash)
+                    val destination = change.destinationPath ?: throw ToolRegistryException(AgentError.validation("Move destination is missing"))
+                    if (fileSystem.exists(destination)) conflict("Cannot move to $destination: destination now exists")
+                }
+                FileChangeType.DELETE -> ensureFingerprint(change.path, change.beforeHash)
+                FileChangeType.CREATE_DIRECTORY -> {
+                    if (fileSystem.exists(change.path)) conflict("Cannot create directory ${change.path}: path now exists")
+                    if (!change.createParents) ensureParentExists(change.path)
+                }
+            }
+        }
+    }
+
+    private fun preflightRevert(changeSet: ChangeSet) {
+        changeSet.files.asReversed().forEach { change ->
+            when (change.changeType) {
+                FileChangeType.CREATE -> ensureHash(change.path, change.afterHash)
+                FileChangeType.MODIFY -> ensureHash(change.path, change.afterHash)
+                FileChangeType.MOVE -> {
+                    val destination = change.destinationPath ?: throw ToolRegistryException(AgentError.validation("Move destination is missing"))
+                    ensureFingerprint(destination, change.beforeHash)
+                    if (fileSystem.exists(change.path)) conflict("Cannot revert move: ${change.path} now exists")
+                }
+                FileChangeType.DELETE -> {
+                    if (fileSystem.exists(change.path)) conflict("Cannot restore ${change.path}: destination now exists")
+                    val trashPath = change.trashPath ?: ".workspace-trash/${changeSet.id}/${File(change.path).name}"
+                    fileSystem.resolveInternal(trashPath, mustExist = true, allowInternal = true)
+                }
+                FileChangeType.CREATE_DIRECTORY -> {
+                    if (!fileSystem.exists(change.path)) conflict("Cannot revert directory creation: ${change.path} is missing")
+                    if (fileSystem.list(change.path, recursive = false, maxResults = 1).isNotEmpty()) conflict("Cannot revert directory creation: ${change.path} is not empty")
+                }
+            }
+        }
+    }
+
     private fun applyChange(changeSetId: String, change: FileChange): FileChange = when (change.changeType) {
         FileChangeType.CREATE -> {
-            if (fileSystem.exists(change.path)) conflict("Cannot create ${change.path}: path now exists")
             fileSystem.writeText(change.path, change.afterContent.orEmpty(), createParents = change.createParents, overwrite = false)
             change
         }
         FileChangeType.MODIFY -> {
-            ensureHash(change.path, change.beforeHash)
             fileSystem.writeText(change.path, change.afterContent.orEmpty(), createParents = false, overwrite = true)
             change
         }
         FileChangeType.MOVE -> {
-            ensureFingerprint(change.path, change.beforeHash)
             val destination = change.destinationPath ?: throw ToolRegistryException(AgentError.validation("Move destination is missing"))
-            if (fileSystem.exists(destination)) conflict("Cannot move to $destination: destination now exists")
             fileSystem.move(change.path, destination, overwrite = false)
             change
         }
         FileChangeType.DELETE -> {
-            ensureFingerprint(change.path, change.beforeHash)
             val trashPath = fileSystem.moveToTrash(change.path, changeSetId)
             change.copy(trashPath = trashPath)
         }
         FileChangeType.CREATE_DIRECTORY -> {
-            if (fileSystem.exists(change.path)) conflict("Cannot create directory ${change.path}: path now exists")
             fileSystem.createDirectory(change.path, createParents = change.createParents)
             change
         }
@@ -167,34 +227,29 @@ class ChangeSetManager(
 
     private fun revertChange(changeSetId: String, change: FileChange) {
         when (change.changeType) {
-            FileChangeType.CREATE -> {
-                ensureHash(change.path, change.afterHash)
-                fileSystem.deleteRecursively(change.path)
-            }
-            FileChangeType.MODIFY -> {
-                ensureHash(change.path, change.afterHash)
-                fileSystem.writeText(change.path, change.beforeContent.orEmpty(), createParents = false, overwrite = true)
-            }
+            FileChangeType.CREATE -> fileSystem.deleteRecursively(change.path)
+            FileChangeType.MODIFY -> fileSystem.writeText(change.path, change.beforeContent.orEmpty(), createParents = false, overwrite = true)
             FileChangeType.MOVE -> {
                 val destination = change.destinationPath ?: throw ToolRegistryException(AgentError.validation("Move destination is missing"))
-                ensureFingerprint(destination, change.beforeHash)
-                if (fileSystem.exists(change.path)) conflict("Cannot revert move: ${change.path} now exists")
                 fileSystem.move(destination, change.path, overwrite = false)
             }
             FileChangeType.DELETE -> {
                 val trashPath = change.trashPath ?: ".workspace-trash/$changeSetId/${File(change.path).name}"
-                if (fileSystem.exists(change.path)) conflict("Cannot restore ${change.path}: destination now exists")
                 fileSystem.restoreFromTrash(trashPath, change.path)
                 ensureFingerprint(change.path, change.beforeHash)
             }
-            FileChangeType.CREATE_DIRECTORY -> {
-                if (!fileSystem.exists(change.path)) conflict("Cannot revert directory creation: ${change.path} is missing")
-                val children = fileSystem.list(change.path, recursive = false, maxResults = 1)
-                if (children.isNotEmpty()) conflict("Cannot revert directory creation: ${change.path} is not empty")
-                fileSystem.deleteRecursively(change.path)
-            }
+            FileChangeType.CREATE_DIRECTORY -> fileSystem.deleteRecursively(change.path)
         }
     }
+
+    private fun ensureParentExists(path: String) {
+        val target = fileSystem.resolve(path)
+        val parent = target.parentFile ?: conflict("Invalid destination: $path")
+        if (!parent.exists() || !parent.isDirectory) conflict("Parent directory does not exist for $path")
+        fileSystem.relative(parent)
+    }
+
+    private fun normalized(path: String): String = fileSystem.relative(fileSystem.resolve(path))
 
     private fun ensureHash(path: String, expected: String?) {
         if (!fileSystem.exists(path)) conflict("$path no longer exists")
