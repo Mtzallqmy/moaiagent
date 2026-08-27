@@ -18,6 +18,8 @@ mockWebServer = "4.12.0"
 appcompat = "1.7.0"
 material = "1.12.0"
 javaDiffUtils = "4.17"
+termuxTerminal = "0.118.0"
+jgit = "5.13.5.202508271544-r"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -46,6 +48,8 @@ espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref =
 appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 material = { module = "com.google.android.material:material", version.ref = "material" }
 java-diff-utils = { module = "io.github.java-diff-utils:java-diff-utils", version.ref = "javaDiffUtils" }
+termux-terminal-view = { module = "com.termux.termux-app:terminal-view", version.ref = "termuxTerminal" }
+jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

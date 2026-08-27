@@ -1,6 +1,7 @@
 package com.agentdroid.core.agent
 
 import com.agentdroid.core.model.Usage
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -19,7 +20,11 @@ enum class AgentMode { CHAT, PLAN, AGENT }
 enum class RiskLevel { SAFE, MODIFY, DESTRUCTIVE, EXTERNAL, SENSITIVE }
 
 @Serializable
-enum class ToolCategory { FILE_READ, FILE_SEARCH, FILE_MODIFY, FILE_DESTRUCTIVE, WORKSPACE, EXTERNAL, SENSITIVE }
+enum class ToolCategory {
+    FILE_READ, FILE_SEARCH, FILE_MODIFY, FILE_DESTRUCTIVE, WORKSPACE,
+    SHELL, PROCESS, GIT_READ, GIT_MODIFY, GIT_DESTRUCTIVE, RUNTIME,
+    EXTERNAL, SENSITIVE
+}
 
 @Serializable
 data class ToolDefinition(
@@ -43,7 +48,8 @@ data class ToolPreview(
     val summary: String,
     val path: String? = null,
     val diff: String? = null,
-    val changeSetId: String? = null
+    val changeSetId: String? = null,
+    val metadata: Map<String, String> = emptyMap()
 )
 
 @Serializable
@@ -73,6 +79,17 @@ enum class AgentErrorCode {
     PATCH_CONFLICT,
     FILE_TOO_LARGE,
     BINARY_FILE_UNSUPPORTED,
+    COMMAND_BLOCKED,
+    COMMAND_TIMEOUT,
+    COMMAND_FAILED,
+    INVALID_EXECUTABLE,
+    PROCESS_LIMIT_REACHED,
+    PROCESS_NOT_FOUND,
+    PROCESS_NOT_RUNNING,
+    PROCESS_BROKEN_PIPE,
+    GIT_NOT_REPOSITORY,
+    GIT_CONFLICT,
+    GIT_ERROR,
     AGENT_TURN_LIMIT_REACHED,
     AGENT_TOOL_CALL_LIMIT_REACHED,
     AGENT_TIMEOUT,
@@ -98,6 +115,11 @@ data class AgentError(
         fun patchConflict(message: String) = AgentError(AgentErrorCode.PATCH_CONFLICT, message, "The file changed and the patch can no longer be applied safely.", true)
         fun fileTooLarge(limit: Long) = AgentError(AgentErrorCode.FILE_TOO_LARGE, "File exceeds $limit bytes", "The file is too large for this operation.", true)
         fun binaryUnsupported() = AgentError(AgentErrorCode.BINARY_FILE_UNSUPPORTED, "Binary content cannot be patched as text", "Binary files cannot be edited with text tools.", false)
+        fun commandBlocked(message: String) = AgentError(AgentErrorCode.COMMAND_BLOCKED, message, "The command was blocked by workspace security policy.", false)
+        fun commandTimeout(timeoutMs: Long) = AgentError(AgentErrorCode.COMMAND_TIMEOUT, "Command exceeded $timeoutMs ms", "The command timed out.", true)
+        fun commandFailed(message: String) = AgentError(AgentErrorCode.COMMAND_FAILED, message, "The command could not be executed.", true)
+        fun processNotFound(id: String) = AgentError(AgentErrorCode.PROCESS_NOT_FOUND, "Process not found: $id", "The process is not available.", false)
+        fun git(message: String, recoverable: Boolean = true) = AgentError(AgentErrorCode.GIT_ERROR, message, "The Git operation failed.", recoverable)
         fun modeRestriction(tool: String, mode: AgentMode) = AgentError(AgentErrorCode.MODE_RESTRICTION, "$tool is not available in $mode mode", "This tool is not allowed in the current mode.", false)
         fun io(message: String) = AgentError(AgentErrorCode.IO_ERROR, message, "The file operation failed.", true)
         fun provider(message: String) = AgentError(AgentErrorCode.PROVIDER_ERROR, message, "The AI provider could not complete the agent turn.", true)
@@ -117,6 +139,21 @@ data class ToolContext(
 
 interface AgentTool {
     val definition: ToolDefinition
+
+    fun availableInMode(mode: AgentMode): Boolean = when (mode) {
+        AgentMode.CHAT -> false
+        AgentMode.PLAN -> definition.riskLevel == RiskLevel.SAFE
+        AgentMode.AGENT -> true
+    }
+
+    suspend fun effectiveRisk(input: JsonObject, context: ToolContext): RiskLevel = definition.riskLevel
+
+    /** Stable, redacted permission identity. Dynamic tools may return e.g. run_command:git diff *. */
+    suspend fun permissionKey(input: JsonObject, context: ToolContext): String? = null
+
+    /** Tool-controlled redacted audit summary. Null falls back to AgentLoop's generic summary. */
+    fun auditInputSummary(input: JsonObject, context: ToolContext): String? = null
+
     suspend fun preview(input: JsonObject, context: ToolContext): ToolPreview? = null
     suspend fun execute(input: JsonObject, context: ToolContext): ToolResult
 }
@@ -132,28 +169,58 @@ class ToolRegistry(tools: Iterable<AgentTool> = emptyList()) {
         require(previous == null) { "Tool already registered: ${tool.definition.name}" }
     }
 
+    fun registerAll(tools: Iterable<AgentTool>) = tools.forEach(::register)
     fun get(name: String): AgentTool? = entries[name]
     fun list(): List<ToolDefinition> = entries.values.map { it.definition }.sortedBy { it.name }
+    fun toolsForMode(mode: AgentMode): List<ToolDefinition> = entries.values.filter { it.availableInMode(mode) }.map { it.definition }.sortedBy { it.name }
 
-    fun toolsForMode(mode: AgentMode): List<ToolDefinition> = when (mode) {
-        AgentMode.CHAT -> emptyList()
-        AgentMode.PLAN -> list().filter { it.riskLevel == RiskLevel.SAFE }
-        AgentMode.AGENT -> list()
+    suspend fun effectiveRisk(call: ToolCall, context: ToolContext): Result<RiskLevel> {
+        val tool = entries[call.name] ?: return Result.failure(ToolRegistryException(AgentError.toolNotFound(call.name)))
+        validate(tool.definition.inputSchema, call.input)?.let { return Result.failure(ToolRegistryException(it)) }
+        val risk = try {
+            tool.effectiveRisk(call.input, context.copy(toolCallId = call.id))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            return Result.failure(failure)
+        }
+        validateMode(tool, context.mode, risk)?.let { return Result.failure(ToolRegistryException(it)) }
+        return Result.success(risk)
     }
+
+    suspend fun permissionKey(call: ToolCall, context: ToolContext): String? = entries[call.name]?.permissionKey(call.input, context.copy(toolCallId = call.id))
+
+    fun auditInputSummary(call: ToolCall, context: ToolContext): String? = entries[call.name]?.auditInputSummary(call.input, context.copy(toolCallId = call.id))
 
     suspend fun preview(call: ToolCall, context: ToolContext): Result<ToolPreview?> {
         val tool = entries[call.name] ?: return Result.failure(ToolRegistryException(AgentError.toolNotFound(call.name)))
-        validateMode(tool.definition, context.mode)?.let { return Result.failure(ToolRegistryException(it)) }
         validate(tool.definition.inputSchema, call.input)?.let { return Result.failure(ToolRegistryException(it)) }
-        return runCatching { tool.preview(call.input, context.copy(toolCallId = call.id)) }
+        val risk = try {
+            tool.effectiveRisk(call.input, context.copy(toolCallId = call.id))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            return Result.failure(failure)
+        }
+        validateMode(tool, context.mode, risk)?.let { return Result.failure(ToolRegistryException(it)) }
+        return try {
+            Result.success(tool.preview(call.input, context.copy(toolCallId = call.id)))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            Result.failure(failure)
+        }
     }
 
     suspend fun execute(call: ToolCall, context: ToolContext): ToolResult {
         val tool = entries[call.name] ?: return ToolResult.failure(AgentError.toolNotFound(call.name))
-        validateMode(tool.definition, context.mode)?.let { return ToolResult.failure(it) }
         validate(tool.definition.inputSchema, call.input)?.let { return ToolResult.failure(it) }
         return try {
+            val risk = tool.effectiveRisk(call.input, context.copy(toolCallId = call.id))
+            validateMode(tool, context.mode, risk)?.let { return ToolResult.failure(it) }
             tool.execute(call.input, context.copy(toolCallId = call.id))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (failure: ToolRegistryException) {
             ToolResult.failure(failure.agentError)
         } catch (failure: Throwable) {
@@ -161,9 +228,9 @@ class ToolRegistry(tools: Iterable<AgentTool> = emptyList()) {
         }
     }
 
-    private fun validateMode(definition: ToolDefinition, mode: AgentMode): AgentError? = when {
-        mode == AgentMode.CHAT -> AgentError.modeRestriction(definition.name, mode)
-        mode == AgentMode.PLAN && definition.riskLevel != RiskLevel.SAFE -> AgentError.modeRestriction(definition.name, mode)
+    private fun validateMode(tool: AgentTool, mode: AgentMode, effectiveRisk: RiskLevel): AgentError? = when {
+        !tool.availableInMode(mode) -> AgentError.modeRestriction(tool.definition.name, mode)
+        mode == AgentMode.PLAN && effectiveRisk != RiskLevel.SAFE -> AgentError.modeRestriction(tool.definition.name, mode)
         else -> null
     }
 
@@ -211,7 +278,8 @@ data class PermissionRequest(
     val conversationId: String,
     val sessionId: String,
     val reason: String? = null,
-    val preview: ToolPreview? = null
+    val preview: ToolPreview? = null,
+    val ruleKey: String? = null
 )
 
 @Serializable
@@ -237,7 +305,8 @@ data class AuditEntry(
     val permissionDecision: PermissionDecision,
     val timestamp: Long,
     val workspaceId: String,
-    val conversationId: String
+    val conversationId: String,
+    val metadata: Map<String, String> = emptyMap()
 )
 
 fun interface AuditSink {

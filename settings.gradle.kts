@@ -1,4 +1,22 @@
 pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
 rootProject.name = "AgentDroid"
-include(":app", ":core:model", ":core:ai", ":core:agent", ":core:permissions", ":core:workspace", ":data:database")
+include(
+    ":app",
+    ":core:model",
+    ":core:ai",
+    ":core:agent",
+    ":core:permissions",
+    ":core:workspace",
+    ":core:runtime",
+    ":core:terminal",
+    ":core:git",
+    ":data:database"
+)

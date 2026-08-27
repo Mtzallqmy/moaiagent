@@ -11,6 +11,8 @@ dependencies {
     implementation(project(":core:agent"))
     implementation(project(":core:permissions"))
     implementation(project(":core:workspace"))
+    implementation(project(":core:runtime"))
+    implementation(project(":core:terminal"))
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler)

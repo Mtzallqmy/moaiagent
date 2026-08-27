@@ -31,7 +31,22 @@ class RoomPermissionRuleStore(private val dao: PermissionRuleDao) : PermissionRu
 
 class RoomAuditSink(private val dao: AuditLogDao) : AuditSink {
     override suspend fun record(entry: AuditEntry) {
-        dao.insert(AuditLogEntity(UUID.randomUUID().toString(), entry.toolCallId, entry.toolName, entry.inputSummary, entry.resultSummary, entry.durationMs, entry.status, entry.permissionDecision.name, entry.timestamp, entry.workspaceId, entry.conversationId))
+        dao.insert(
+            AuditLogEntity(
+                UUID.randomUUID().toString(),
+                entry.toolCallId,
+                entry.toolName,
+                entry.inputSummary,
+                entry.resultSummary,
+                entry.durationMs,
+                entry.status,
+                entry.permissionDecision.name,
+                entry.timestamp,
+                entry.workspaceId,
+                entry.conversationId,
+                agentStoreJson.encodeToString(entry.metadata)
+            )
+        )
     }
 }
 

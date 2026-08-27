@@ -40,14 +40,9 @@ class InMemoryPermissionRuleStore(initial: List<PermissionRule> = emptyList()) :
 }
 
 @Serializable
-data class PermissionResponse(
-    val decision: PermissionDecision,
-    val scope: PermissionScope = PermissionScope.ONCE
-)
+data class PermissionResponse(val decision: PermissionDecision, val scope: PermissionScope = PermissionScope.ONCE)
 
-fun interface PermissionPrompter {
-    suspend fun prompt(request: PermissionRequest): PermissionResponse
-}
+fun interface PermissionPrompter { suspend fun prompt(request: PermissionRequest): PermissionResponse }
 
 class PermissionRequestCoordinator : PermissionPrompter {
     private val mutex = Mutex()
@@ -57,20 +52,14 @@ class PermissionRequestCoordinator : PermissionPrompter {
 
     override suspend fun prompt(request: PermissionRequest): PermissionResponse = mutex.withLock {
         val deferred = CompletableDeferred<PermissionResponse>()
-        answer = deferred
-        _pending.value = request
-        try {
-            deferred.await()
-        } finally {
+        answer = deferred; _pending.value = request
+        try { deferred.await() } finally {
             if (answer === deferred) answer = null
             if (_pending.value?.requestId == request.requestId) _pending.value = null
         }
     }
 
-    fun resolve(decision: PermissionDecision, scope: PermissionScope = PermissionScope.ONCE) {
-        answer?.complete(PermissionResponse(decision, scope))
-    }
-
+    fun resolve(decision: PermissionDecision, scope: PermissionScope = PermissionScope.ONCE) { answer?.complete(PermissionResponse(decision, scope)) }
     fun denyPending() = resolve(PermissionDecision.DENY, PermissionScope.ONCE)
 }
 
@@ -79,23 +68,31 @@ class PermissionEngine(
     private val prompter: PermissionPrompter,
     private val defaultPolicy: (RiskLevel) -> PermissionDecision = ::defaultPermissionForRisk
 ) : PermissionGateway {
-    private data class SessionKey(val sessionId: String, val workspaceId: String, val toolName: String)
+    private data class SessionKey(val sessionId: String, val workspaceId: String, val permissionKey: String)
     private val sessionRules = ConcurrentHashMap<SessionKey, PermissionDecision>()
 
     override suspend fun authorize(request: PermissionRequest): PermissionOutcome {
-        val key = SessionKey(request.sessionId, request.workspaceId, request.definition.name)
+        val dynamicKey = request.ruleKey?.takeIf(::isSafePermissionKey)
+        val permissionKey = dynamicKey ?: request.definition.name
+        val key = SessionKey(request.sessionId, request.workspaceId, permissionKey)
         sessionRules[key]?.let { return PermissionOutcome(it, PermissionScope.SESSION, "session") }
 
-        val stored = ruleStore.list()
-            .asSequence()
+        val stored = ruleStore.list().asSequence()
             .filter { it.scope == PermissionScope.ALWAYS }
-            .filter { it.toolName == request.definition.name || it.toolName == "*" }
+            .filter { rule ->
+                if (dynamicKey != null) rule.toolName == dynamicKey
+                else rule.toolName == request.definition.name || rule.toolName == "*"
+            }
             .filter { it.workspaceId == null || it.workspaceId == request.workspaceId }
             .sortedWith(compareByDescending<PermissionRule> { it.workspaceId != null }.thenByDescending { it.createdAt })
             .firstOrNull()
-        if (stored != null) return PermissionOutcome(stored.decision, PermissionScope.ALWAYS, "stored")
 
-        return when (val default = defaultPolicy(request.definition.riskLevel)) {
+        if (stored?.decision == PermissionDecision.ALLOW || stored?.decision == PermissionDecision.DENY) {
+            return PermissionOutcome(stored.decision, PermissionScope.ALWAYS, "stored")
+        }
+
+        val policyDecision = if (stored?.decision == PermissionDecision.ASK) PermissionDecision.ASK else defaultPolicy(request.definition.riskLevel)
+        return when (policyDecision) {
             PermissionDecision.ALLOW -> PermissionOutcome(PermissionDecision.ALLOW, PermissionScope.ONCE, "risk-default")
             PermissionDecision.DENY -> PermissionOutcome(PermissionDecision.DENY, PermissionScope.ONCE, "risk-default")
             PermissionDecision.ASK -> {
@@ -104,37 +101,32 @@ class PermissionEngine(
                     when (response.scope) {
                         PermissionScope.ONCE -> Unit
                         PermissionScope.SESSION -> sessionRules[key] = PermissionDecision.ALLOW
-                        PermissionScope.ALWAYS -> ruleStore.save(
-                            PermissionRule(
-                                toolName = request.definition.name,
-                                workspaceId = request.workspaceId,
-                                decision = PermissionDecision.ALLOW,
-                                scope = PermissionScope.ALWAYS
-                            )
-                        )
+                        PermissionScope.ALWAYS -> ruleStore.save(PermissionRule(toolName = permissionKey, workspaceId = request.workspaceId, decision = PermissionDecision.ALLOW, scope = PermissionScope.ALWAYS))
                     }
                 }
-                PermissionOutcome(response.decision, response.scope, "prompt")
+                PermissionOutcome(response.decision, response.scope, if (stored?.decision == PermissionDecision.ASK) "stored-ask" else "prompt")
             }
         }
     }
 
-    override fun clearSession(sessionId: String) {
-        sessionRules.keys.removeIf { it.sessionId == sessionId }
-    }
+    override fun clearSession(sessionId: String) { sessionRules.keys.removeIf { it.sessionId == sessionId } }
 
     suspend fun setAlways(toolName: String, workspaceId: String?, decision: PermissionDecision) {
+        require(isSafePermissionKey(toolName)) { "Unsafe permission rule key" }
         ruleStore.save(PermissionRule(toolName = toolName, workspaceId = workspaceId, decision = decision, scope = PermissionScope.ALWAYS))
     }
 
     suspend fun removeRule(ruleId: String) = ruleStore.delete(ruleId)
     suspend fun rules(): List<PermissionRule> = ruleStore.list()
+
+    private fun isSafePermissionKey(value: String): Boolean {
+        if (value.length !in 1..300 || value.any { it == '\n' || it == '\r' || it == '\u0000' }) return false
+        val stars = value.count { it == '*' }
+        return stars == 0 || (stars == 1 && value.endsWith(" *") && value.substringBeforeLast(" *").isNotBlank())
+    }
 }
 
 fun defaultPermissionForRisk(risk: RiskLevel): PermissionDecision = when (risk) {
     RiskLevel.SAFE -> PermissionDecision.ALLOW
-    RiskLevel.MODIFY -> PermissionDecision.ASK
-    RiskLevel.DESTRUCTIVE -> PermissionDecision.ASK
-    RiskLevel.EXTERNAL -> PermissionDecision.ASK
-    RiskLevel.SENSITIVE -> PermissionDecision.ASK
+    RiskLevel.MODIFY, RiskLevel.DESTRUCTIVE, RiskLevel.EXTERNAL, RiskLevel.SENSITIVE -> PermissionDecision.ASK
 }

@@ -13,10 +13,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.agentdroid.R
 import com.agentdroid.core.agent.AgentMode
 import com.agentdroid.core.agent.AgentStepStatus
 import com.agentdroid.core.agent.PermissionScope
@@ -47,14 +49,14 @@ fun Phase2ChatScreen(nav: NavHostController, factory: ContainerViewModelFactory,
 
     Column(Modifier.fillMaxSize().testTag("phase2_chat")) {
         TopAppBar(
-            title = { Text("AgentDroid") },
-            actions = { IconButton({ vm.newConversation() }) { Icon(Icons.Default.Add, "New conversation") } }
+            title = { Text(stringResource(R.string.app_name)) },
+            actions = { IconButton({ vm.newConversation() }) { Icon(Icons.Default.Add, stringResource(R.string.new_conversation)) } }
         )
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box {
                 AssistChip(
                     onClick = { providerMenu = true },
-                    label = { Text(providers.firstOrNull { it.id == selectedProvider }?.name ?: "Provider") },
+                    label = { Text(providers.firstOrNull { it.id == selectedProvider }?.name ?: stringResource(R.string.provider)) },
                     leadingIcon = { Icon(Icons.Default.Cloud, null) }
                 )
                 DropdownMenu(providerMenu, { providerMenu = false }) {
@@ -62,7 +64,7 @@ fun Phase2ChatScreen(nav: NavHostController, factory: ContainerViewModelFactory,
                 }
             }
             Box {
-                AssistChip(onClick = { modelMenu = true }, label = { Text(selectedModel ?: "Model") })
+                AssistChip(onClick = { modelMenu = true }, label = { Text(selectedModel ?: stringResource(R.string.model)) })
                 DropdownMenu(modelMenu, { modelMenu = false }) {
                     providers.firstOrNull { it.id == selectedProvider }?.modelId?.let { model ->
                         DropdownMenuItem({ Text(model) }, { vm.chooseModel(model); modelMenu = false })
@@ -73,7 +75,7 @@ fun Phase2ChatScreen(nav: NavHostController, factory: ContainerViewModelFactory,
         AgentModeAndContextBar(vm)
         AgentExecutionPanel(nav, vm)
         if (messages.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center) { Text("Start a conversation") }
+            Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center) { Text(stringResource(R.string.no_messages)) }
         } else {
             LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(messages, key = { it.id }) { message -> Phase2MessageBubble(message, vm) }
@@ -85,17 +87,17 @@ fun Phase2ChatScreen(nav: NavHostController, factory: ContainerViewModelFactory,
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f).testTag("agent_composer"),
-                placeholder = { Text("Message AgentDroid…") },
+                placeholder = { Text(stringResource(R.string.composer_hint)) },
                 maxLines = 6
             )
             Spacer(Modifier.width(8.dp))
             if (phase == ChatPhase.STREAMING || phase == ChatPhase.SUBMITTING) {
-                IconButton(vm::stop, Modifier.testTag("agent_stop")) { Icon(Icons.Default.Stop, "Stop") }
+                IconButton(vm::stop, Modifier.testTag("agent_stop")) { Icon(Icons.Default.Stop, stringResource(R.string.stop)) }
             } else {
                 IconButton(
                     onClick = { if (input.isNotBlank()) { vm.send(input); input = "" } },
                     modifier = Modifier.testTag("agent_send")
-                ) { Icon(Icons.Default.Send, "Send") }
+                ) { Icon(Icons.Default.Send, stringResource(R.string.send)) }
             }
         }
     }
@@ -111,9 +113,9 @@ private fun Phase2MessageBubble(message: MessageEntity, vm: ChatViewModel) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(if (user) "You" else "AgentDroid", style = MaterialTheme.typography.labelMedium)
+            Text(if (user) stringResource(R.string.you) else stringResource(R.string.app_name), style = MaterialTheme.typography.labelMedium)
             Text(message.content)
-            if (message.status == MessageStatus.FAILED.name && !user) TextButton(vm::retry) { Text("Retry") }
+            if (message.status == MessageStatus.FAILED.name && !user) TextButton(vm::retry) { Text(stringResource(R.string.retry)) }
         }
     }
 }
@@ -131,25 +133,30 @@ fun AgentModeAndContextBar(vm: ChatViewModel) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             AgentMode.values().forEach { value ->
+                val label = when (value) {
+                    AgentMode.CHAT -> stringResource(R.string.chat)
+                    AgentMode.PLAN -> stringResource(R.string.plan)
+                    AgentMode.AGENT -> stringResource(R.string.agent_mode)
+                }
                 FilterChip(
                     selected = mode == value,
                     onClick = { vm.chooseMode(value) },
                     enabled = value == AgentMode.CHAT || supportsTools,
-                    label = { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                    label = { Text(label) },
                     modifier = Modifier.testTag("mode_${value.name.lowercase()}")
                 )
             }
         }
-        if (!supportsTools) Text("Plan and Agent require provider tool-calling support.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!supportsTools) Text(stringResource(R.string.plan_agent_requires_tools), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box {
             AssistChip(
                 onClick = { workspaceMenu = true },
-                label = { Text(workspaces.firstOrNull { it.id == selectedWorkspace }?.name ?: "Select workspace") },
+                label = { Text(workspaces.firstOrNull { it.id == selectedWorkspace }?.name ?: stringResource(R.string.select_workspace)) },
                 leadingIcon = { Icon(Icons.Default.Folder, null) },
                 modifier = Modifier.testTag("workspace_selector")
             )
             DropdownMenu(workspaceMenu, { workspaceMenu = false }) {
-                DropdownMenuItem({ Text("No workspace") }, { vm.chooseWorkspace(null); workspaceMenu = false })
+                DropdownMenuItem({ Text(stringResource(R.string.no_workspace)) }, { vm.chooseWorkspace(null); workspaceMenu = false })
                 workspaces.forEach { workspace -> DropdownMenuItem({ Text(workspace.name) }, { vm.chooseWorkspace(workspace.id); workspaceMenu = false }) }
             }
         }
@@ -201,7 +208,7 @@ fun AgentExecutionPanel(nav: NavHostController, vm: ChatViewModel) {
                         }
                         if (stats.isNotBlank()) Text(stats, style = MaterialTheme.typography.labelSmall)
                     }
-                    if (card.changeSetId != null && workspaceId != null) TextButton({ nav.navigate("diff/$workspaceId/${card.changeSetId}") }) { Text("Diff") }
+                    if (card.changeSetId != null && workspaceId != null) TextButton({ nav.navigate("diff/$workspaceId/${card.changeSetId}") }) { Text(stringResource(R.string.diff)) }
                 }
             }
         }
@@ -215,13 +222,13 @@ fun AgentPermissionDialog(vm: ChatViewModel) {
     AlertDialog(
         onDismissRequest = vm::denyPermission,
         modifier = Modifier.testTag("permission_dialog"),
-        title = { Text("Agent permission required") },
+        title = { Text(stringResource(R.string.tool_permission_required)) },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Tool: ${pending.definition.name}")
+                Text(stringResource(R.string.tool_label, pending.definition.name))
                 pending.preview?.path?.let { Text(it, fontFamily = FontFamily.Monospace) }
-                pending.reason?.let { Text("Reason: $it") }
-                Text("Risk: ${pending.definition.riskLevel.name}")
+                pending.reason?.let { Text(stringResource(R.string.reason_label, it)) }
+                Text(stringResource(R.string.risk_label, pending.definition.riskLevel.name))
                 pending.preview?.summary?.let { Text(it) }
                 pending.preview?.diff?.takeIf { it.isNotBlank() }?.let { diff ->
                     Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -233,12 +240,12 @@ fun AgentPermissionDialog(vm: ChatViewModel) {
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
                 Row {
-                    TextButton({ vm.allowPermission(PermissionScope.ONCE) }, Modifier.testTag("permission_allow_once")) { Text("Allow once") }
-                    TextButton({ vm.allowPermission(PermissionScope.SESSION) }) { Text("Allow session") }
+                    TextButton({ vm.allowPermission(PermissionScope.ONCE) }, Modifier.testTag("permission_allow_once")) { Text(stringResource(R.string.allow_once)) }
+                    TextButton({ vm.allowPermission(PermissionScope.SESSION) }) { Text(stringResource(R.string.allow_session)) }
                 }
                 Row {
-                    TextButton({ vm.allowPermission(PermissionScope.ALWAYS) }) { Text("Always allow") }
-                    TextButton(vm::denyPermission, Modifier.testTag("permission_deny")) { Text("Deny") }
+                    TextButton({ vm.allowPermission(PermissionScope.ALWAYS) }) { Text(stringResource(R.string.always_allow)) }
+                    TextButton(vm::denyPermission, Modifier.testTag("permission_deny")) { Text(stringResource(R.string.deny)) }
                 }
             }
         }
