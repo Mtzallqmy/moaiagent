@@ -77,10 +77,10 @@ class ChangeSetManager(
 
     suspend fun accept(id: String): ChangeSet {
         val current = requireProposed(id)
+        val completed = mutableListOf<FileChange>()
+        var applied = current
         return try {
             preflightApply(current.files)
-            var applied = current
-            val completed = mutableListOf<FileChange>()
             current.files.forEachIndexed { index, change ->
                 val appliedChange = applyChange(current.id, change)
                 completed += appliedChange
@@ -90,8 +90,11 @@ class ChangeSetManager(
             store.save(applied)
             applied
         } catch (failure: Throwable) {
-            val conflicted = current.copy(status = ChangeSetStatus.CONFLICTED)
-            store.save(conflicted)
+            val rollbackFailure = rollbackApplied(current.id, completed)
+            store.save(current.copy(status = ChangeSetStatus.CONFLICTED))
+            if (rollbackFailure != null) {
+                throw ToolRegistryException(AgentError.io("ChangeSet $id failed and rollback also failed: ${rollbackFailure.message}"))
+            }
             if (failure is ToolRegistryException) throw failure
             throw ToolRegistryException(AgentError.io("Failed to apply ChangeSet $id: ${failure.message}"))
         }
@@ -124,14 +127,22 @@ class ChangeSetManager(
         val current = store.get(id) ?: throw ToolRegistryException(AgentError.validation("Unknown ChangeSet: $id"))
         if (current.workspaceId != workspaceId) throw ToolRegistryException(AgentError.workspaceViolation("ChangeSet belongs to another workspace"))
         if (current.status != ChangeSetStatus.APPLIED) throw ToolRegistryException(AgentError.validation("Only applied ChangeSets can be reverted"))
+        val revertedChanges = mutableListOf<FileChange>()
         return try {
             preflightRevert(current)
-            current.files.asReversed().forEach { revertChange(current.id, it) }
+            current.files.asReversed().forEach { change ->
+                revertChange(current.id, change)
+                revertedChanges += change
+            }
             val reverted = current.copy(status = ChangeSetStatus.REVERTED, revertedAt = System.currentTimeMillis())
             store.save(reverted)
             reverted
         } catch (failure: Throwable) {
+            val restoreFailure = restoreAppliedState(current.id, revertedChanges)
             store.save(current.copy(status = ChangeSetStatus.CONFLICTED))
+            if (restoreFailure != null) {
+                throw ToolRegistryException(AgentError.io("Revert of ChangeSet $id failed and applied-state recovery also failed: ${restoreFailure.message}"))
+            }
             if (failure is ToolRegistryException) throw failure
             throw ToolRegistryException(AgentError.io("Failed to revert ChangeSet $id: ${failure.message}"))
         }
@@ -240,6 +251,26 @@ class ChangeSetManager(
             }
             FileChangeType.CREATE_DIRECTORY -> fileSystem.deleteRecursively(change.path)
         }
+    }
+
+    private fun rollbackApplied(changeSetId: String, completed: List<FileChange>): Throwable? {
+        var failure: Throwable? = null
+        completed.asReversed().forEach { change ->
+            if (failure == null) {
+                runCatching { revertChange(changeSetId, change) }.onFailure { failure = it }
+            }
+        }
+        return failure
+    }
+
+    private fun restoreAppliedState(changeSetId: String, reverted: List<FileChange>): Throwable? {
+        var failure: Throwable? = null
+        reverted.asReversed().forEach { change ->
+            if (failure == null) {
+                runCatching { applyChange(changeSetId, change) }.onFailure { failure = it }
+            }
+        }
+        return failure
     }
 
     private fun ensureParentExists(path: String) {
