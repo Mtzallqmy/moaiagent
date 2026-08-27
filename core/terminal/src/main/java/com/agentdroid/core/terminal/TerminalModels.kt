@@ -1,9 +1,7 @@
 package com.agentdroid.core.terminal
 
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.serialization.Serializable
 
-@Serializable
 data class TerminalSessionMetadata(
     val sessionId: String,
     val workspaceId: String,
@@ -15,7 +13,6 @@ data class TerminalSessionMetadata(
     val exitCode: Int? = null
 )
 
-@Serializable
 data class TerminalSessionState(
     val sessionId: String,
     val workspaceId: String,
