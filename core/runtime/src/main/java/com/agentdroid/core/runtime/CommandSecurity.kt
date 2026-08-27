@@ -116,6 +116,8 @@ class CommandClassifier {
         if (args.any { it == "-d" || it == "-D" || it == "--delete" }) return RiskLevel.DESTRUCTIVE
         if (args.any(::isGitOutputOption)) return RiskLevel.MODIFY
         if (args.isEmpty()) return RiskLevel.SAFE
+        // Positional values following --list are match patterns, not branch names to create.
+        if ("--list" in args) return RiskLevel.SAFE
         val readOnlyFlags = setOf(
             "-a", "--all", "-r", "--remotes", "--list", "--show-current", "--contains",
             "--no-contains", "--merged", "--no-merged", "-v", "-vv", "--verbose", "--color",
