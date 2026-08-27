@@ -72,18 +72,17 @@ class JGitEngine : GitEngine {
 
     override suspend fun log(root: File, limit: Int): Result<List<GitCommitInfo>> = ioResult {
         repository(root).use { repo ->
-            Git(repo).use { git ->
-                runCatching {
-                    git.log().setMaxCount(limit.coerceIn(1, 200)).call().map { commit ->
-                        GitCommitInfo(
-                            id = commit.name,
-                            shortId = commit.name.take(8),
-                            message = commit.fullMessage,
-                            author = commit.authorIdent?.let { "${it.name} <${it.emailAddress}>" }.orEmpty(),
-                            timestamp = commit.commitTime.toLong() * 1000L
-                        )
-                    }.toList()
-                }.getOrDefault(emptyList())
+            Git(repo).use gitUse@ { git ->
+                if (repo.resolve("HEAD") == null) return@gitUse emptyList()
+                git.log().setMaxCount(limit.coerceIn(1, 200)).call().map { commit ->
+                    GitCommitInfo(
+                        id = commit.name,
+                        shortId = commit.name.take(8),
+                        message = commit.fullMessage,
+                        author = commit.authorIdent?.let { "${it.name} <${it.emailAddress}>" }.orEmpty(),
+                        timestamp = commit.commitTime.toLong() * 1000L
+                    )
+                }.toList()
             }
         }
     }
@@ -140,7 +139,11 @@ class JGitEngine : GitEngine {
         repository(root).use { repo ->
             Git(repo).use { git ->
                 normalized.forEach { path ->
-                    if (staged) git.reset().setRef("HEAD").addPath(path).call()
+                    if (staged && repo.resolve("HEAD") == null) {
+                        // An unborn repository has no HEAD tree to reset to. Removing the path only
+                        // from the index preserves the working-tree file and correctly unstages it.
+                        git.rm().setCached(true).addFilepattern(path).call()
+                    } else if (staged) git.reset().setRef("HEAD").addPath(path).call()
                     else git.checkout().addPath(path).call()
                 }
             }
