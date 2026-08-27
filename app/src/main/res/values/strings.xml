@@ -171,6 +171,12 @@
     <string name="terminal_exited">Exited %1$d</string>
     <string name="view_output">View output</string>
     <string name="open_terminal">Open terminal</string>
+    <string name="open_runtime">Open runtime</string>
+    <string name="open_git">Open Git</string>
+    <string name="terminal_no_session">Select or create a terminal session.</string>
+    <string name="clear_terminal">Clear terminal</string>
+    <string name="copy_terminal">Copy terminal output</string>
+    <string name="paste_terminal">Paste into terminal</string>
     <string name="processes">Processes</string>
     <string name="background_processes">Background processes</string>
     <string name="no_processes">No processes.</string>
@@ -200,9 +206,14 @@
     <!-- Phase 3 Git -->
     <string name="git_repository">Repository</string>
     <string name="git_not_repository">This workspace is not a Git repository.</string>
+    <string name="git_not_initialized">Git is not initialized.</string>
     <string name="git_initialize">Initialize Git repository</string>
     <string name="git_branch">Branch: %1$s</string>
     <string name="git_status">Status</string>
+    <string name="git_changes">Changes</string>
+    <string name="git_conflicts">Conflicts</string>
+    <string name="git_view_diff">View diff</string>
+    <string name="git_no_staged">No staged files.</string>
     <string name="git_modified">Modified</string>
     <string name="git_added">Added</string>
     <string name="git_deleted">Deleted</string>
