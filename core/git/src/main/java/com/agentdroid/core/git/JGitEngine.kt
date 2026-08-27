@@ -1,12 +1,9 @@
 package com.agentdroid.core.git
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.api.ResetCommand
-import org.eclipse.jgit.diff.DiffFormatter
-import org.eclipse.jgit.diff.RawTextComparator
-import org.eclipse.jgit.errors.RepositoryNotFoundException
 import org.eclipse.jgit.lib.PersonIdent
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.treewalk.filter.PathFilter
@@ -46,25 +43,29 @@ class JGitEngine : GitEngine {
     override suspend fun diff(root: File, path: String?, staged: Boolean, maxChars: Int): Result<GitDiffResult> = ioResult {
         repository(root).use { repo ->
             Git(repo).use { git ->
-                val command = git.diff().setCached(staged)
+                val out = ByteArrayOutputStream()
+                val command = git.diff()
+                    .setCached(staged)
+                    .setOutputStream(out)
                 val normalized = path?.takeIf { it.isNotBlank() }?.let { validateGitPath(root, it) }
                 if (normalized != null && normalized != ".") command.setPathFilter(PathFilter.create(normalized))
+
+                // Let DiffCommand own the working-tree/index iterators while it formats the patch.
+                // Formatting returned DiffEntry objects again with a separate DiffFormatter can try to
+                // resolve working-tree pseudo object ids from the object database and cause MissingObjectException.
                 val entries = command.call()
-                val out = ByteArrayOutputStream()
-                DiffFormatter(out).use { formatter ->
-                    formatter.setRepository(repo)
-                    formatter.setDiffComparator(RawTextComparator.DEFAULT)
-                    formatter.isDetectRenames = true
-                    entries.forEach { formatter.format(it) }
-                }
                 val raw = out.toString(Charsets.UTF_8.name())
-                GitDiffResult(raw.take(maxChars), entries.mapNotNull { entry ->
-                    when {
-                        entry.newPath != "/dev/null" -> entry.newPath
-                        entry.oldPath != "/dev/null" -> entry.oldPath
-                        else -> null
-                    }
-                }.distinct(), raw.length > maxChars)
+                GitDiffResult(
+                    raw.take(maxChars),
+                    entries.mapNotNull { entry ->
+                        when {
+                            entry.newPath != "/dev/null" -> entry.newPath
+                            entry.oldPath != "/dev/null" -> entry.oldPath
+                            else -> null
+                        }
+                    }.distinct(),
+                    raw.length > maxChars
+                )
             }
         }
     }
@@ -72,15 +73,17 @@ class JGitEngine : GitEngine {
     override suspend fun log(root: File, limit: Int): Result<List<GitCommitInfo>> = ioResult {
         repository(root).use { repo ->
             Git(repo).use { git ->
-                runCatching { git.log().setMaxCount(limit.coerceIn(1, 200)).call().map { commit ->
-                    GitCommitInfo(
-                        id = commit.name,
-                        shortId = commit.name.take(8),
-                        message = commit.fullMessage,
-                        author = commit.authorIdent?.let { "${it.name} <${it.emailAddress}>" }.orEmpty(),
-                        timestamp = commit.commitTime.toLong() * 1000L
-                    )
-                }.toList() }.getOrDefault(emptyList())
+                runCatching {
+                    git.log().setMaxCount(limit.coerceIn(1, 200)).call().map { commit ->
+                        GitCommitInfo(
+                            id = commit.name,
+                            shortId = commit.name.take(8),
+                            message = commit.fullMessage,
+                            author = commit.authorIdent?.let { "${it.name} <${it.emailAddress}>" }.orEmpty(),
+                            timestamp = commit.commitTime.toLong() * 1000L
+                        )
+                    }.toList()
+                }.getOrDefault(emptyList())
             }
         }
     }
@@ -121,7 +124,10 @@ class JGitEngine : GitEngine {
             Git(repo).use { git ->
                 val configuredName = repo.config.getString("user", null, "name")
                 val configuredEmail = repo.config.getString("user", null, "email")
-                val ident = PersonIdent(authorName?.takeIf { it.isNotBlank() } ?: configuredName ?: "AgentDroid", authorEmail?.takeIf { it.isNotBlank() } ?: configuredEmail ?: "agentdroid@local")
+                val ident = PersonIdent(
+                    authorName?.takeIf { it.isNotBlank() } ?: configuredName ?: "AgentDroid",
+                    authorEmail?.takeIf { it.isNotBlank() } ?: configuredEmail ?: "agentdroid@local"
+                )
                 val commit = git.commit().setMessage(validated).setAuthor(ident).setCommitter(ident).call()
                 GitCommitInfo(commit.name, commit.name.take(8), commit.fullMessage, "${ident.name} <${ident.emailAddress}>", commit.commitTime.toLong() * 1000L)
             }
@@ -155,6 +161,12 @@ class JGitEngine : GitEngine {
     }
 
     private suspend fun <T> ioResult(block: () -> T): Result<T> = withContext(Dispatchers.IO) {
-        try { Result.success(block()) } catch (failure: Throwable) { Result.failure(failure) }
+        try {
+            Result.success(block())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            Result.failure(failure)
+        }
     }
 }
