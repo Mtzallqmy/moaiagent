@@ -2,7 +2,7 @@ name: Phase 5 Verification
 
 on:
   push:
-    branches: [phase5-model-driven-planner]
+    branches: [phase5-local-ai-runtimes-mcp-release]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -17,7 +17,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,18 +43,22 @@ jobs:
         run: ./gradlew assembleDebugAndroidTest --stacktrace
       - name: Assemble debug
         run: ./gradlew assembleDebug --stacktrace
-      - name: Assemble release
+      - name: Assemble release APK
         run: ./gradlew assembleRelease --stacktrace
+      - name: Assemble release AAB
+        run: ./gradlew bundleRelease --stacktrace
       - name: Inventory first-party source languages
         shell: bash
         run: |
           mkdir -p build/reports/phase5
           find . -type f \
             \( -name '*.kt' -o -name '*.java' -o -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' -o -name '*.h' -o -name '*.hpp' -o -name '*.rs' -o -name '*.go' -o -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.lua' \) \
-            -not -path './.git/*' -not -path '*/build/*' -not -path './.gradle/*' \
+            -not -path './.git/*' -not -path '*/build/*' -not -path './.gradle/*' -not -path './third_party/*' \
             | sort > build/reports/phase5/source-language-files.txt
           awk -F. 'NF > 1 { ext=$NF; count[ext]++ } END { for (ext in count) print ext, count[ext] }' \
             build/reports/phase5/source-language-files.txt | sort > build/reports/phase5/source-language-counts.txt
+          while IFS= read -r file; do wc -l "$file"; done < build/reports/phase5/source-language-files.txt \
+            > build/reports/phase5/source-language-lines.txt
           cat build/reports/phase5/source-language-counts.txt
       - name: Inventory APK native libraries
         shell: bash
@@ -63,31 +67,34 @@ jobs:
           test -f "$APK"
           unzip -l "$APK" | awk '/ lib\/.+\.so$/ { print $4 }' | sort > build/reports/phase5/apk-native-libraries.txt
           cat build/reports/phase5/apk-native-libraries.txt
-      - name: Record Phase 5 build evidence
+      - name: Record final build evidence
         shell: bash
         run: |
+          RELEASE_APK=$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -type f | head -n 1 || true)
+          RELEASE_AAB=$(find app/build/outputs/bundle/release -maxdepth 1 -name '*.aab' -type f | head -n 1 || true)
           {
             echo "commit=${GITHUB_SHA}"
             echo "branch=${GITHUB_REF_NAME}"
-            echo "database_schema_version=4"
-            echo "planner_tests=passed"
-            echo "runtime_evidence_tests=passed"
             echo "debug_apk=app/build/outputs/apk/debug/app-debug.apk"
-            echo "release_apk=app/build/outputs/apk/release/app-release-unsigned.apk"
+            echo "release_apk=${RELEASE_APK}"
+            echo "release_aab=${RELEASE_AAB}"
+            echo "signing=${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && 'configured-by-secret' || 'not-configured-in-ci' }}"
           } > build/reports/phase5/build-evidence.txt
-      - name: Upload Phase 5 evidence
+      - name: Upload final build evidence
         uses: actions/upload-artifact@v4
         with:
           name: phase5-build-evidence
           path: |
             build/reports/phase5/
-            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
 
   instrumentation:
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
