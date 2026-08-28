@@ -2,12 +2,15 @@ package com.agentdroid.core.localai
 
 import android.os.Build
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -88,7 +91,7 @@ private class LlamaCppSession(
             return@callbackFlow
         }
         trySend(LocalGenerationEvent.Started)
-        val worker = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default).launch {
+        val worker = CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             val result = runCatching {
                 LlamaNative.generate(handle, prompt, config.temperature, config.maxTokens, object : NativeTokenCallback {
                     override fun onToken(text: String) { if (text.isNotEmpty()) trySend(LocalGenerationEvent.Token(text)) }
