@@ -1,0 +1,10 @@
+<resources>
+    <string name="agent_capsule_ready">AgentDroid • جاهز</string>
+    <string name="agent_capsule_running">AgentDroid • يعمل</string>
+    <string name="agent_capsule_paused">AgentDroid • متوقف مؤقتًا</string>
+    <string name="agent_capsule_stopping">AgentDroid • جارٍ الإيقاف</string>
+    <string name="agent_capsule_pause">إيقاف مؤقت</string>
+    <string name="agent_capsule_resume">متابعة</string>
+    <string name="agent_capsule_stop">إيقاف</string>
+    <string name="agent_capsule_take_over">تولّي التحكم</string>
+</resources>
