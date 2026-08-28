@@ -2,7 +2,7 @@ name: Open Source Integration Hardening
 
 on:
   push:
-    branches: [open-source-integration-hardening]
+    branches: [open-source-integration-hardening, main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -55,6 +55,7 @@ jobs:
             | sort > build/reports/open-source-integration/source-language-files.txt
           awk -F. 'NF > 1 { ext=$NF; count[ext]++ } END { for (ext in count) print ext, count[ext] }' build/reports/open-source-integration/source-language-files.txt | sort > build/reports/open-source-integration/source-language-counts.txt
           cat build/reports/open-source-integration/source-language-counts.txt
+          printf 'commit=%s\nbranch=%s\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" > build/reports/open-source-integration/build-evidence.txt
       - name: Upload build evidence
         uses: actions/upload-artifact@v4
         with:
@@ -69,7 +70,7 @@ jobs:
   instrumentation:
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 100
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -81,6 +82,15 @@ jobs:
           cache: gradle
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Download pinned GGUF inference smoke model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-models
+          curl -L --fail --retry 4 --retry-delay 3 \
+            -o .ci-models/SmolLM2-135M.Q4_K_M.gguf \
+            'https://huggingface.co/QuantLLM/SmolLM2-135M-GGUF/resolve/main/SmolLM2-135M.Q4_K_M.gguf?download=true'
+          echo '6ba74acd6239f2ae38abd1c941613b17f18f2687a79f40dc4b5fbe38ea61605c  .ci-models/SmolLM2-135M.Q4_K_M.gguf' | sha256sum -c -
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -93,11 +103,26 @@ jobs:
           arch: x86_64
           target: default
           profile: pixel_6
+          disk-size: 8G
+          heap-size: 1024M
           disable-animations: true
           script: |
+            set -euo pipefail
             ./gradlew installDebug --stacktrace
+            adb shell mkdir -p /sdcard/Android/data/com.agentdroid.debug/files/ci-models
+            adb push .ci-models/SmolLM2-135M.Q4_K_M.gguf /sdcard/Android/data/com.agentdroid.debug/files/ci-models/SmolLM2-135M.Q4_K_M.gguf
             adb shell settings put secure enabled_accessibility_services com.agentdroid.debug/com.agentdroid.core.phone.AgentDroidAccessibilityService
             adb shell settings put secure accessibility_enabled 1
             adb shell am force-stop com.agentdroid.debug || true
             sleep 2
             ./gradlew connectedDebugAndroidTest --stacktrace
+            adb shell settings get secure enabled_accessibility_services
+      - name: Upload instrumentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-source-integration-instrumentation-evidence
+          path: |
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
+          if-no-files-found: warn
