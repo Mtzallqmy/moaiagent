@@ -24,5 +24,6 @@ include(
     ":core:artifacts",
     ":core:subagents",
     ":core:localai",
+    ":core:mcp",
     ":data:database"
 )
