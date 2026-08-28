@@ -3,6 +3,8 @@ package com.agentdroid.core.ai.transport
 import com.agentdroid.core.ai.ErrorMapper
 import com.agentdroid.core.model.AppError
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
@@ -14,6 +16,7 @@ import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -23,22 +26,41 @@ class HttpTransport(
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 ) {
+    @OptIn(InternalCoroutinesApi::class)
     suspend fun execute(request: Request): Response {
-        val job = currentCoroutineContext()[kotlinx.coroutines.Job]
+        val job = currentCoroutineContext()[Job]
         return suspendCancellableCoroutine { continuation ->
             val call = client.newCall(request)
-            continuation.invokeOnCancellation { call.cancel() }
+            val responseRef = AtomicReference<Response?>(null)
+
+            // Streaming providers can block inside Okio while waiting for the next SSE chunk.
+            // A regular invokeOnCompletion handler runs too late in that case: the Job cannot
+            // complete until the blocking read returns. Register for the cancelling transition
+            // so the socket is closed immediately and the blocked read is interrupted.
+            job?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
+                if (cause != null) {
+                    call.cancel()
+                    responseRef.getAndSet(null)?.close()
+                }
+            }
+
+            continuation.invokeOnCancellation {
+                call.cancel()
+                responseRef.getAndSet(null)?.close()
+            }
+
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
                     if (continuation.isCancelled) return
                     continuation.resumeWithException(e)
                 }
+
                 override fun onResponse(call: Call, response: Response) {
+                    responseRef.set(response)
                     if (continuation.isCancelled) {
-                        response.close()
+                        responseRef.getAndSet(null)?.close()
                         return
                     }
-                    job?.invokeOnCompletion { response.close() }
                     continuation.resume(response)
                 }
             })
