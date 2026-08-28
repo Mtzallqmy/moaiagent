@@ -82,24 +82,27 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
             composable("runtime") { RuntimeScreen(nav) }
             composable("permissions") { PermissionRulesScreen(nav, factory) }
             composable("phone_security") { PhoneSecurityScreen { nav.popBackStack() } }
+            composable("automations") { AutomationsScreen { nav.popBackStack() } }
+            composable("backup_restore") { BackupRestoreScreen { nav.popBackStack() } }
             composable("local_models") { Phase5LocalModelsScreen { nav.popBackStack() } }
             composable("runtime_packs") { Phase5RuntimePacksScreen { nav.popBackStack() } }
             composable("mcp_servers") { Phase5McpServersScreen { nav.popBackStack() } }
             composable("storage") { Phase5StorageScreen { nav.popBackStack() } }
             composable("classic") { AgentDroidRoot() }
             composable("more") {
-                val arabic = LocalContext.current.resources.configuration.locales[0].language.equals("ar", true)
                 Column(Modifier.padding(20.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
                     ListItem(headlineContent = { Text(stringResource(R.string.agent_permissions_audit)) }, leadingContent = { Icon(Icons.Default.Security, null) })
                     Button({ nav.navigate("permissions") }) { Text(stringResource(R.string.manage_permissions)) }
-                    Button({ nav.navigate("phone_security") }) { Icon(Icons.Default.Security, null); Text(if (arabic) "الهاتف والأمان" else "Phone & Security", Modifier.padding(start = 8.dp)) }
+                    Button({ nav.navigate("phone_security") }) { Icon(Icons.Default.Security, null); Text(stringResource(R.string.phone_security), Modifier.padding(start = 8.dp)) }
                     Button({ nav.navigate("runtime") }) { Icon(Icons.Default.Terminal, null); Text(stringResource(R.string.open_runtime), Modifier.padding(start = 8.dp)) }
                     Text(stringResource(R.string.phase5_system), style = MaterialTheme.typography.titleMedium)
                     OutlinedButton({ nav.navigate("local_models") }) { Text(stringResource(R.string.local_models)) }
                     OutlinedButton({ nav.navigate("runtime_packs") }) { Text(stringResource(R.string.runtime_packs)) }
                     OutlinedButton({ nav.navigate("mcp_servers") }) { Text(stringResource(R.string.mcp_servers)) }
+                    OutlinedButton({ nav.navigate("automations") }) { Text(stringResource(R.string.automations)) }
                     OutlinedButton({ nav.navigate("storage") }) { Text(stringResource(R.string.storage)) }
+                    OutlinedButton({ nav.navigate("backup_restore") }) { Text(stringResource(R.string.backup_title)) }
                     OutlinedButton({ nav.navigate("classic") }) { Text(stringResource(R.string.providers_memory_skills_settings)) }
                 }
             }
