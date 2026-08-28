@@ -399,7 +399,8 @@ private class WebViewBrowserSession(
         val runtime = operationMutex.withLock { ensureOpen(); activeRuntime().also { it.needsReload = false } }
         awaitPageIdle(runtime)
         val restoredUrl = runtime.pageState.currentUrl
-        return if (runtime.webView.url == null && restoredUrl != null) {
+        val hasLoadedPage = onMain { runtime.webView.url != null }
+        return if (!hasLoadedPage && restoredUrl != null) {
             val safeUrl = urlPolicy.requireNavigable(restoredUrl)
             navigateAndAwait(runtime) { loadUrl(safeUrl) }
         } else navigateAndAwait(runtime) { reload() }
