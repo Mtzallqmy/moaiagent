@@ -1,103 +1,139 @@
-# Phase 5 Report — Model-Driven Planner
+# Phase 5 Report — Local AI, Runtime Packs, MCP, and Model-Driven Planning
 
 ## Status
 
-Phase 5 implementation is present on `phase5-model-driven-planner`, but final CI, Android runtime evidence, artifact inventory, PR review, and merge are still required.
+Phase 5 implementation and runtime/build verification are complete on `phase5-local-ai-runtimes-mcp-release`.
 
-**Ready for Phase 6: NO**
+The final publication PR and merge to `main` are still pending at the time of this branch report update.
+
+**Ready for Phase 6: NO — publication/merge still pending.**
 
 ## Implemented
 
-- `ModelDrivenPlanner` accepts goal, project memory, skills, verified capabilities, and optional workspace summary.
-- Structured steps contain title, goal, dependencies, expected capabilities, and acceptance criteria.
-- Candidate plans are bounded, schema-decoded, capability-validated, cycle-checked, and topologically ordered.
-- One bounded model repair attempt handles malformed or invalid structured output.
-- A deterministic, goal-aware fallback remains available when model planning fails.
-- `ModelPlanningCoordinator` creates/reuses a validated task before the production Plan/Agent loop.
-- Tool capabilities come from the actual mode-filtered `ToolRegistry`.
-- Runtime language capabilities come only from `RuntimeVerifier` execution evidence, never from detection alone.
-- `TaskEngine.createFromPlan` persists an already validated execution plan without moving provider/runtime concerns into the task state machine.
+- Model-driven planning with structured, bounded, capability-validated plans.
+- Repair-once handling for malformed or invalid planner output plus deterministic goal-aware fallback.
+- Production Plan/Agent integration through `ModelPlanningCoordinator` and `TaskEngine.createFromPlan`.
+- Verified runtime capability discovery that distinguishes detection from actual Agent-executable evidence.
+- Runtime Pack manager with trusted-source installation, checksums, enable/disable state, execution verification, and UI.
+- Embedded Python 3.13 integration with Agent tools for version inspection, code execution, and package installation.
+- Local-model management and a native llama.cpp JNI bridge with Android ABI packaging.
+- MCP HTTP client/contracts/adapters plus application management UI and secure credential storage integration.
+- Storage/runtime/model/MCP system screens and Phase 5 Android acceptance coverage.
 
-## Runtime evidence policy
+## Planner and capability policy
 
-`RuntimeDiscovery` is inventory only. `RuntimeVerifier` distinguishes `NOT_DETECTED`, `DETECTED_ONLY`, `EXECUTION_PROBE_PASSED`, and `EMBEDDED_COMPONENT`.
+`ModelDrivenPlanner` receives the user goal plus bounded context, memory, skills, workspace summary, and only verified capabilities. Retrieved/model-generated data is treated as untrusted and cannot create capabilities that AgentDroid has not verified.
 
-A language is not reported as an Agent-executable runtime unless bounded code execution succeeds through AgentDroid's `ProcessRunner` in the Android application environment. CI-host tools do not count as Android runtime support.
+Structured plans contain stable step IDs, user-visible goals, dependencies, expected capabilities, and observable acceptance criteria. Plans are schema-validated, capability-checked, cycle-checked, bounded, and topologically ordered before task creation.
 
-## Language classification
+Runtime discovery alone is inventory only. A runtime capability is advertised to the planner only when the product's verification policy permits it.
 
-Final values are intentionally pending until the Phase 5 CI artifact inventory and Android instrumentation run complete.
+## Final first-party source language inventory
 
-### 1. AgentDroid first-party source languages
+Phase 5 Verification run #38 generated the final first-party inventory on commit `c25361c31cc5869edb8b48a858f77f2cb38e84bd`:
 
-**Pending final source-tree inventory artifact.**
+- Kotlin: **135 files**
+- C++: **1 file** (`core/localai/src/main/cpp/llama_jni.cpp`)
+- Python: **1 file** (`app/src/main/python/agentdroid_runtime.py`)
 
-Kotlin/Java are known first-party Android sources. C/C++, Rust, Go, Python, Node/JavaScript/TypeScript, and Lua will not be claimed as first-party implementation languages unless the final source inventory proves first-party source for an actually integrated subsystem.
+No first-party Rust, Go, JavaScript/TypeScript, or Lua source was present in the final inventory.
 
-### 2. Languages/runtimes AgentDroid can execute
+This classification applies to AgentDroid's first-party source tree only; third-party dependency implementation languages are not counted as AgentDroid source languages.
 
-**Pending Android instrumentation evidence.**
+## Runtime execution classification
 
-- Android shell: must pass a real execution probe before it is reported supported.
-- Python: reported only if the Android `python3 -c` probe passes.
-- Node.js: reported only if the Android `node -e` probe passes.
-- Rust/Go: detection of `rustc`/`go` is toolchain inventory only; neither becomes an Agent runtime capability without a real AgentDroid subsystem.
-- Lua: not claimed without a real plugin/skill sandbox.
+### Android shell
 
-### 3. Languages present only in external dependencies/build artifacts
+**VERIFIED Agent-executable.**
 
-**Pending APK native-library inventory and dependency evidence.**
+API 35 x86_64 emulator instrumentation verifies shell discovery and a bounded command execution through `DefaultProcessRunner`, and requires `RuntimeEvidenceKind.EXECUTION_PROBE_PASSED` before `runtime.shell` is advertised.
 
-Native `.so` files in the APK may originate from Android/third-party dependencies. Their implementation language is not automatically an AgentDroid first-party language or an Agent-executable runtime.
+### Embedded Python 3.13
 
-## Native/local AI status
+**VERIFIED Agent-executable.**
 
-- llama.cpp / native inference backend: **not claimed** unless C/C++ source/NDK-JNI integration and corresponding APK native artifacts are verified.
-- Rust native/security subsystem: **not claimed** unless first-party Rust source and product linkage are verified.
-- Go service/CLI/runtime component: **not claimed** unless first-party Go source and actual product use are verified.
-- Lua plugin/skill sandbox: **not claimed** unless executable sandbox behavior is verified.
-- MCP: no Phase 5 claim is made merely from plans or dependency names; an implementation must be present and exercised before it is reported supported.
+Android instrumentation executes `print('AGENTDROID_PYTHON_OK')` through AgentDroid's embedded Python runtime, verifies Python 3.13, verifies exit code `0`, verifies the expected output, verifies the registered `python_version`, `python_run`, and `python_install_package` Agent tools, and verifies the Python Runtime Pack as `agentExecutable`.
 
-## Tests added
+### Node.js
 
-- calculator goal and Android foreground-service research goal produce materially different model plans;
-- cyclic plans are rejected and repaired;
-- malformed structured JSON is repaired;
-- unadvertised capabilities are rejected and repaired;
-- plan size is bounded;
-- model/provider failure uses deterministic goal-aware fallback;
-- detected Python does not become a capability when its execution probe fails;
-- Python/Node capabilities require successful execution probes;
-- Rust/Go detection does not become runtime support;
-- embedded Git is classified as an application component;
-- Android instrumentation verifies runtime evidence through `DefaultProcessRunner` in the emulator/application environment.
+**NOT Agent-executable in Phase 5.**
 
-## Persistence
+The official Node.js Mobile Android pack is independently inspected in CI and contains Android libraries for `arm64-v8a` and `x86_64`. However, installing `libnode.so` is not equivalent to a `node::Start` execution bridge. `AppRuntimePackController` therefore intentionally returns `false` for Node execution verification and does not advertise Node as an Agent-executable runtime.
 
-Room schema remains version 4. The full validated planner DAG exists at the planning boundary and is topologically converted into the current ordered execution `TaskPlan`. Phase 5 does not add a speculative database migration solely to duplicate graph metadata before a graph scheduler needs durable branch-level scheduling.
+### Git
 
-## CI/build evidence
+Git is an **embedded application component** through JGit and the existing Agent Git tooling. It is not classified as a language runtime discovered from the Android host.
 
-A dedicated `Phase 5 Verification` workflow runs:
+### Rust and Go
 
+**NOT Agent runtimes.** Host/toolchain detection does not grant `runtime.rust` or `runtime.go`, and Android acceptance explicitly requires them not to be advertised without a real AgentDroid subsystem.
+
+### Lua
+
+**NOT implemented as a runtime/plugin sandbox in Phase 5.**
+
+## Native/local AI evidence
+
+The final first-party inventory contains `core/localai/src/main/cpp/llama_jni.cpp`, and the debug APK native-library inventory contains:
+
+- `lib/arm64-v8a/libagentdroid_llama.so`
+- `lib/x86_64/libagentdroid_llama.so`
+
+This verifies that AgentDroid's native llama.cpp JNI bridge is first-party integrated and packaged for both configured Android ABIs.
+
+The APK also contains Python/Chaquopy, C++ runtime, Termux, crypto/SSL/SQLite, AndroidX graphics, and related third-party native libraries. Their presence does not make those dependencies first-party AgentDroid implementation languages or planner capabilities.
+
+Phase 5 CI verifies the native bridge packaging/build path; it does not claim a full performance/quality benchmark of inference with every GGUF model/device combination.
+
+## MCP status
+
+The `core:mcp` module contains the MCP contracts, HTTP client, and Agent adapters, with application-level server configuration/connection UI. MCP unit coverage is included in the successful full unit-test suite.
+
+Phase 5 does not claim that every external MCP server or authentication scheme has been live-tested in CI; interoperability remains bounded by the implemented protocol/transport behavior and the configured server.
+
+## Build artifacts
+
+Phase 5 Verification run #38 records:
+
+- commit: `c25361c31cc5869edb8b48a858f77f2cb38e84bd`
+- branch: `phase5-local-ai-runtimes-mcp-release`
+- debug APK: `app/build/outputs/apk/debug/app-debug.apk`
+- release APK: `app/build/outputs/apk/release/app-release-unsigned.apk`
+- release AAB: `app/build/outputs/bundle/release/app-release.aab`
+- CI signing: **not configured in CI**
+
+The unsigned release APK/AAB build successfully; production signing is intentionally not claimed by this CI evidence.
+
+## CI and Android verification
+
+Phase 5 Verification run #38 (`33184399469`) completed successfully on commit `c25361c31cc5869edb8b48a858f77f2cb38e84bd`.
+
+Successful gates:
+
+- official Node.js Mobile Android asset inspection and evidence upload;
 - clean;
-- planner/runtime narrow tests;
+- planner/runtime targeted unit tests;
 - full unit tests;
 - lint;
 - Android UI test compilation;
-- debug/release assembly;
-- first-party source language inventory;
+- debug APK assembly;
+- release APK assembly;
+- release AAB assembly;
+- first-party source-language inventory;
 - APK native-library inventory;
-- evidence artifact upload;
-- API 35 x86_64 emulator instrumentation.
+- final build-evidence artifact upload;
+- API 35 x86_64 Android emulator instrumentation.
 
-Final run ID, commit SHA, inventory values, APK evidence, and instrumentation result are pending.
+The emulator acceptance includes the Phase 5 runtime-evidence tests and passes successfully.
 
-## Remaining before completion
+## Persistence
 
-1. Obtain one complete green Phase 5 workflow on the final code/documentation SHA.
-2. Inspect the generated source-language and APK-native-library evidence artifacts.
-3. Inspect Android instrumentation evidence for shell/Python/Node/Rust/Go classification.
-4. Replace all pending language classification text above with observed facts only.
-5. Review the complete diff, open the Phase 5 PR, and merge only with green checks.
-6. After the merge is actually complete, update this report to record the merged commit and set `Ready for Phase 6: YES` only if no completion gate remains.
+Room remains on schema version 4. The full validated planner DAG exists at the planning boundary and is topologically converted into the current ordered execution `TaskPlan`. Phase 5 does not add a speculative migration solely to duplicate graph metadata before a future scheduler needs durable branch-level execution state.
+
+## Remaining publication gate
+
+1. Run the Phase 5 workflow on this final documentation SHA.
+2. Open the Phase 5 pull request to `main`.
+3. Require all PR-triggered checks to be green.
+4. Merge normally without force-pushing.
+5. Record the final PR and merge commit on `main`, then set `Ready for Phase 6: YES` only after the merge is actually complete.
