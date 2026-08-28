@@ -18,7 +18,6 @@ data class RuntimePackManifest(
     val version: String,
     val architectures: List<String>,
     val sizeBytes: Long,
-    /** Lowercase SHA-256 for downloadable packs; platform/embedded packs use an explicit provenance marker. */
     val checksum: String,
     val source: String,
     val license: String,
@@ -52,7 +51,8 @@ data class RuntimePackState(
     val verifiedChecksum: String? = null,
     val error: String? = null
 ) {
-    val executableByAgent: Boolean get() = status == RuntimePackStatus.INSTALLED || status == RuntimePackStatus.BUNDLED
+    /** Installation/package state only. Runtime execution support requires a separate execution probe. */
+    val installedOrBundled: Boolean get() = status == RuntimePackStatus.INSTALLED || status == RuntimePackStatus.BUNDLED
 }
 
 interface RuntimePackInstaller {
@@ -60,7 +60,6 @@ interface RuntimePackInstaller {
     suspend fun uninstall(state: RuntimePackState): Result<Unit>
 }
 
-/** Downloads nothing implicitly: callers must explicitly invoke install after user permission. */
 class VerifiedZipRuntimePackInstaller(
     private val installRoot: File,
     private val openSource: suspend (String) -> InputStream,
@@ -104,16 +103,10 @@ class VerifiedZipRuntimePackInstaller(
                     while (true) {
                         val entry = zip.nextEntry ?: break
                         val name = entry.name.replace('\\', '/')
-                        require(name.isNotBlank() && !name.startsWith('/') && !name.contains("../") && name != "..") {
-                            "Unsafe runtime pack entry"
-                        }
+                        require(name.isNotBlank() && !name.startsWith('/') && !name.contains("../") && name != "..") { "Unsafe runtime pack entry" }
                         val target = File(expanded, name).canonicalFile
-                        require(target == expanded.canonicalFile || target.path.startsWith(expanded.canonicalPath + File.separator)) {
-                            "Runtime pack entry escapes install directory"
-                        }
-                        if (entry.isDirectory) {
-                            target.mkdirs()
-                        } else {
+                        require(target == expanded.canonicalFile || target.path.startsWith(expanded.canonicalPath + File.separator)) { "Runtime pack entry escapes install directory" }
+                        if (entry.isDirectory) target.mkdirs() else {
                             target.parentFile?.mkdirs()
                             target.outputStream().buffered().use { output ->
                                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -138,16 +131,15 @@ class VerifiedZipRuntimePackInstaller(
                 val destination = File(installRoot, manifest.id)
                 if (destination.exists()) require(destination.deleteRecursively()) { "Could not replace installed runtime pack" }
                 require(expanded.renameTo(destination)) { "Could not commit runtime pack installation" }
+                val installedAt = System.currentTimeMillis()
                 RuntimePackState(
-                    manifest = manifest.copy(installedAt = System.currentTimeMillis()),
+                    manifest = manifest.copy(installedAt = installedAt),
                     status = RuntimePackStatus.INSTALLED,
-                    installedAt = System.currentTimeMillis(),
+                    installedAt = installedAt,
                     installPath = destination.canonicalPath,
                     verifiedChecksum = actual
                 )
-            } finally {
-                staging.deleteRecursively()
-            }
+            } finally { staging.deleteRecursively() }
         }
     }
 

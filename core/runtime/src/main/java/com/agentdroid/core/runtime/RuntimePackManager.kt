@@ -25,8 +25,7 @@ class RuntimePackManager(
     init {
         manifests.forEach { manifest ->
             states[manifest.id] = when (manifest.sourceKind) {
-                RuntimePackSourceKind.PLATFORM, RuntimePackSourceKind.EMBEDDED ->
-                    RuntimePackState(manifest, RuntimePackStatus.BUNDLED, installedAt = System.currentTimeMillis())
+                RuntimePackSourceKind.PLATFORM, RuntimePackSourceKind.EMBEDDED -> RuntimePackState(manifest, RuntimePackStatus.BUNDLED, installedAt = System.currentTimeMillis())
                 RuntimePackSourceKind.TRUSTED_DOWNLOAD -> RuntimePackState(manifest, RuntimePackStatus.NOT_INSTALLED)
             }
         }
@@ -44,15 +43,13 @@ class RuntimePackManager(
         val manifest = manifestsById[id] ?: return Result.failure(IllegalArgumentException("Unknown runtime pack: $id"))
         require(manifest.sourceKind == RuntimePackSourceKind.TRUSTED_DOWNLOAD) { "Bundled/platform packs do not require installation" }
         lock.withLock { states[id] = RuntimePackState(manifest, RuntimePackStatus.INSTALLING) }
-        val result = installer.install(manifest)
-        return result.fold(
+        return installer.install(manifest).fold(
             { installed ->
                 lock.withLock { states[id] = installed }
                 Result.success(RuntimePackCapabilityState(installed, verifyExecutable(installed)))
             },
             { failure ->
-                val failed = RuntimePackState(manifest, RuntimePackStatus.FAILED, error = failure.message)
-                lock.withLock { states[id] = failed }
+                lock.withLock { states[id] = RuntimePackState(manifest, RuntimePackStatus.FAILED, error = failure.message) }
                 Result.failure(failure)
             }
         )
@@ -77,7 +74,7 @@ class RuntimePackManager(
     }
 
     private suspend fun verifyExecutable(state: RuntimePackState): Boolean {
-        if (state.status != RuntimePackStatus.INSTALLED && state.status != RuntimePackStatus.BUNDLED) return false
+        if (!state.installedOrBundled) return false
         return runCatching { executionVerifier.verify(state) }.getOrDefault(false)
     }
 }
