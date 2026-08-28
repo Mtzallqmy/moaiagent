@@ -1,8 +1,50 @@
+import java.net.URI
+import java.security.MessageDigest
+import java.util.zip.ZipFile
+
 plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.android); alias(libs.plugins.kotlin.serialization); alias(libs.plugins.compose.compiler); id("com.chaquo.python") }
+
+val nodeVersion = "18.20.4"
+val nodeArchiveSha256 = "bd7321eaa1a7602fbe0bb87302df2d79d87835cf4363fbdd17c350dbb485c2af"
+val nodeArchiveUrl = "https://github.com/nodejs-mobile/nodejs-mobile/releases/download/v$nodeVersion/nodejs-mobile-v$nodeVersion-android.zip"
+val nodeCacheDir = File(gradle.gradleUserHomeDir, "caches/agentdroid-node/$nodeVersion")
+val nodeArchive = File(nodeCacheDir, "nodejs-mobile-$nodeVersion-android.zip")
+val nodeJniDir = layout.buildDirectory.dir("generated/nodeJniLibs")
+
+val prepareNodeRuntime by tasks.registering {
+    outputs.dir(nodeJniDir)
+    doLast {
+        nodeCacheDir.mkdirs()
+        if (!nodeArchive.exists()) {
+            val connection = URI(nodeArchiveUrl).toURL().openConnection().apply {
+                connectTimeout = 30_000
+                readTimeout = 120_000
+                setRequestProperty("User-Agent", "AgentDroid-build")
+            }
+            connection.getInputStream().use { input -> nodeArchive.outputStream().buffered().use { output -> input.copyTo(output) } }
+        }
+        val actual = MessageDigest.getInstance("SHA-256").digest(nodeArchive.readBytes()).joinToString("") { "%02x".format(it) }
+        if (actual != nodeArchiveSha256) {
+            nodeArchive.delete()
+            throw GradleException("Node.js Mobile archive SHA-256 mismatch: $actual")
+        }
+        val outputRoot = nodeJniDir.get().asFile.apply { deleteRecursively(); mkdirs() }
+        ZipFile(nodeArchive).use { zip ->
+            mapOf(
+                "arm64-v8a" to "bin/arm64-v8a/libnode.so",
+                "x86_64" to "bin/x86_64/libnode.so"
+            ).forEach { (abi, path) ->
+                val entry = zip.getEntry(path) ?: throw GradleException("Missing Node.js Mobile entry $path")
+                val target = File(outputRoot, "$abi/libnode.so").apply { parentFile.mkdirs() }
+                zip.getInputStream(entry).use { input -> target.outputStream().buffered().use { output -> input.copyTo(output) } }
+            }
+        }
+    }
+}
 
 android { namespace = "com.agentdroid"; compileSdk = 35
     defaultConfig {
-        applicationId = "com.agentdroid"; minSdk = 26; targetSdk = 35; versionCode = 1; versionName = "1.0.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        applicationId = "com.agentdroid"; minSdk = 26; targetSdk = 35; versionCode = 2; versionName = "1.1.0-alpha2"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_1_8; targetCompatibility = JavaVersion.VERSION_1_8 }
@@ -12,9 +54,15 @@ android { namespace = "com.agentdroid"; compileSdk = 35
     }
     buildTypes { debug { applicationIdSuffix = ".debug" }; release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") } }
     buildFeatures { compose = true; buildConfig = true }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    sourceSets.getByName("main").jniLibs.srcDir(nodeJniDir)
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        jniLibs.useLegacyPackaging = true
+    }
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
+
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(prepareNodeRuntime) }
 
 chaquopy { defaultConfig { version = "3.13" } }
 

@@ -14,7 +14,8 @@ import java.io.InputStream
 class AppRuntimePackController(
     context: Context,
     private val container: AppContainer,
-    private val python: EmbeddedPythonRuntime
+    private val python: EmbeddedPythonRuntime,
+    private val node: EmbeddedNodeRuntime
 ) {
     private val appContext = context.applicationContext
     private val http = OkHttpClient.Builder().followRedirects(true).build()
@@ -37,39 +38,34 @@ class AppRuntimePackController(
         "base-shell" -> {
             val probe = File(appContext.cacheDir, "runtime-probe").apply { mkdirs() }
             val result = runCatching {
-                container.processRunner.run(
-                    ProcessRequest(
-                        argv = listOf("/system/bin/sh", "-c", "printf AGENTDROID_RUNTIME_OK"),
-                        cwd = probe,
-                        timeoutMs = 4_000
-                    )
-                )
+                container.processRunner.run(ProcessRequest(argv = listOf("/system/bin/sh", "-c", "printf AGENTDROID_RUNTIME_OK"), cwd = probe, timeoutMs = 4_000))
             }.getOrNull()
             result?.exitCode == 0 && !result.timedOut && result.stdout == "AGENTDROID_RUNTIME_OK"
         }
-        "git" -> true // Agent Git is embedded JGit and is covered by the Git engine/instrumentation tests.
+        "git" -> true
         "python" -> {
             val workspaceId = "runtime_probe"
             container.workspaceRoot(workspaceId).mkdirs()
             val result = runCatching { python.runCode(workspaceId, "print('AGENTDROID_RUNTIME_OK')", 4_000) }.getOrNull()
             result?.exitCode == 0 && "AGENTDROID_RUNTIME_OK" in result.stdout
         }
-        // libnode.so installation is not a node::Start execution bridge. Never advertise it as executable yet.
-        "node" -> false
+        "node" -> {
+            val workspaceId = "node_runtime_probe"
+            container.workspaceRoot(workspaceId).mkdirs()
+            val result = runCatching { node.runCode(workspaceId, "console.log('AGENTDROID_NODE_OK')", 6_000) }.getOrNull()
+            result?.exitCode == 0 && !result.timedOut && "AGENTDROID_NODE_OK" in result.stdout
+        }
         else -> false
     }
 
     private suspend fun openTrustedSource(url: String): InputStream = withContext(Dispatchers.IO) {
         val response = http.newCall(Request.Builder().url(url).get().build()).execute()
         if (!response.isSuccessful) {
-            response.close()
-            error("Runtime download failed with HTTP ${response.code}")
+            response.close(); error("Runtime download failed with HTTP ${response.code}")
         }
         val body = response.body ?: run { response.close(); error("Runtime download body is empty") }
         object : FilterInputStream(body.byteStream()) {
-            override fun close() {
-                try { super.close() } finally { response.close() }
-            }
+            override fun close() { try { super.close() } finally { response.close() } }
         }
     }
 }
