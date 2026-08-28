@@ -67,19 +67,19 @@ class AgentDroidAccessibilityService : AccessibilityService() {
         statusText = TextView(this).also { text ->
             text.setTextColor(Color.WHITE)
             text.textSize = 12f
-            text.text = "AgentDroid • Ready"
+            text.text = getString(R.string.agent_capsule_ready)
             root.addView(text)
         }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        pauseButton = capsuleButton("Pause") {
+        pauseButton = capsuleButton(getString(R.string.agent_capsule_pause)) {
             when (AgentRuntimeControl.state.value) {
                 AgentRuntimeState.RUNNING -> AgentRuntimeControl.pause()
                 AgentRuntimeState.PAUSED -> AgentRuntimeControl.resume()
                 else -> Unit
             }
         }.also(row::addView)
-        stopButton = capsuleButton("Stop") { AgentRuntimeControl.stop() }.also(row::addView)
-        row.addView(capsuleButton("Take over") {
+        stopButton = capsuleButton(getString(R.string.agent_capsule_stop)) { AgentRuntimeControl.stop() }.also(row::addView)
+        row.addView(capsuleButton(getString(R.string.agent_capsule_take_over)) {
             AgentRuntimeControl.pause()
             packageManager.getLaunchIntentForPackage(packageName)?.apply {
                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -116,15 +116,15 @@ class AgentDroidAccessibilityService : AccessibilityService() {
     }
 
     private fun updateCapsule(state: AgentRuntimeState) {
-        statusText?.text = when (state) {
-            AgentRuntimeState.IDLE -> "AgentDroid • Ready"
-            AgentRuntimeState.RUNNING -> "AgentDroid • Running"
-            AgentRuntimeState.PAUSED -> "AgentDroid • Paused"
-            AgentRuntimeState.STOPPED -> "AgentDroid • Stopping"
-        }
+        statusText?.text = getString(when (state) {
+            AgentRuntimeState.IDLE -> R.string.agent_capsule_ready
+            AgentRuntimeState.RUNNING -> R.string.agent_capsule_running
+            AgentRuntimeState.PAUSED -> R.string.agent_capsule_paused
+            AgentRuntimeState.STOPPED -> R.string.agent_capsule_stopping
+        })
         pauseButton?.apply {
             isEnabled = state == AgentRuntimeState.RUNNING || state == AgentRuntimeState.PAUSED
-            text = if (state == AgentRuntimeState.PAUSED) "Resume" else "Pause"
+            text = getString(if (state == AgentRuntimeState.PAUSED) R.string.agent_capsule_resume else R.string.agent_capsule_pause)
         }
         stopButton?.isEnabled = state == AgentRuntimeState.RUNNING || state == AgentRuntimeState.PAUSED
     }
