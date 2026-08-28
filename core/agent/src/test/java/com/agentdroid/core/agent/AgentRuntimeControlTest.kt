@@ -1,7 +1,5 @@
 package com.agentdroid.core.agent
 
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -27,20 +25,18 @@ class AgentRuntimeControlTest {
     }
 
     @Test fun `stop cancels active agent job`(): Unit = runBlocking {
-        val child = async {
+        val child = launch {
             AgentRuntimeControl.begin("test-stop", coroutineContext[kotlinx.coroutines.Job])
             try {
                 delay(10_000)
-                false
-            } catch (_: CancellationException) {
-                true
             } finally {
                 AgentRuntimeControl.finish("test-stop")
             }
         }
         delay(50)
         assertTrue(AgentRuntimeControl.stop())
-        assertTrue(withTimeout(1_000) { child.await() })
+        withTimeout(1_000) { child.join() }
+        assertTrue(child.isCancelled)
         assertEquals(AgentRuntimeState.IDLE, AgentRuntimeControl.state.value)
     }
 }
