@@ -1,0 +1,30 @@
+<resources>
+    <string name="automations">الأتمتة</string>
+    <string name="automation_new">أتمتة جديدة</string>
+    <string name="automation_goal">الهدف</string>
+    <string name="automation_workspace">مساحة العمل</string>
+    <string name="automation_conversation">المحادثة</string>
+    <string name="automation_repeat_minutes">التكرار كل عدد من الدقائق (فارغ = مرة واحدة)</string>
+    <string name="automation_initial_delay">التأخير الأولي بالدقائق</string>
+    <string name="automation_network">يتطلب الشبكة</string>
+    <string name="automation_charging">يتطلب الشحن</string>
+    <string name="automation_schedule">جدولة</string>
+    <string name="automation_cancel">إلغاء الجدولة</string>
+    <string name="automation_once">مرة واحدة</string>
+    <string name="automation_every">كل %1$d دقيقة</string>
+    <string name="automation_empty">لا توجد أتمتة مجدولة.</string>
+    <string name="automation_android_note">قد يؤخر Android العمل المجدول بسبب Doze وحصص المجدول. العمل المجدول ينشئ مهمة Agent دائمة مع الإبقاء على فحوصات الأذونات.</string>
+    <string name="backup_export">تصدير نسخة احتياطية</string>
+    <string name="backup_import">استيراد نسخة احتياطية</string>
+    <string name="backup_title">النسخ الاحتياطي والاستعادة</string>
+    <string name="backup_safe_note">لا يتم تصدير مفاتيح API أو قيم التخزين الآمن أو أسماء أسرار الموفر أو ترويسات الاعتماد المخصصة أو بيانات اعتماد MCP.</string>
+    <string name="backup_exported">تم تصدير النسخة: %1$d مساحة عمل، %2$d محادثة، %3$d ملفًا.</string>
+    <string name="backup_imported">تم استيراد النسخة: %1$d مساحة عمل، %2$d محادثة، %3$d ملفًا.</string>
+    <string name="backup_failed">فشلت عملية النسخ الاحتياطي: %1$s</string>
+    <string name="usage">الاستخدام</string>
+    <string name="usage_prompt_tokens">رموز الإدخال</string>
+    <string name="usage_completion_tokens">رموز الإخراج</string>
+    <string name="usage_total_tokens">إجمالي الرموز</string>
+    <string name="usage_messages">الرسائل المقاسة</string>
+    <string name="phone_security">الهاتف والأمان</string>
+</resources>
