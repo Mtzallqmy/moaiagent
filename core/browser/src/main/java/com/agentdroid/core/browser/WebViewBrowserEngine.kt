@@ -681,7 +681,9 @@ private class WebViewBrowserSession(
                     if (requestedIndex != null && runtime.visitedUrls.getOrNull(requestedIndex) == url) {
                         runtime.historyIndex = requestedIndex
                     } else if (runtime.visitedUrls.getOrNull(runtime.historyIndex) != url) {
-                        while (runtime.visitedUrls.lastIndex > runtime.historyIndex) runtime.visitedUrls.removeLast()
+                        while (runtime.visitedUrls.lastIndex > runtime.historyIndex) {
+                            runtime.visitedUrls.removeAt(runtime.visitedUrls.lastIndex)
+                        }
                         runtime.visitedUrls += url
                         runtime.historyIndex = runtime.visitedUrls.lastIndex
                     }
