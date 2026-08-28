@@ -84,6 +84,7 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
             composable("phone_security") { PhoneSecurityScreen { nav.popBackStack() } }
             composable("automations") { AutomationsScreen { nav.popBackStack() } }
             composable("backup_restore") { BackupRestoreScreen { nav.popBackStack() } }
+            composable("usage") { UsageScreen { nav.popBackStack() } }
             composable("local_models") { Phase5LocalModelsScreen { nav.popBackStack() } }
             composable("runtime_packs") { Phase5RuntimePacksScreen { nav.popBackStack() } }
             composable("mcp_servers") { Phase5McpServersScreen { nav.popBackStack() } }
@@ -101,6 +102,7 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
                     OutlinedButton({ nav.navigate("runtime_packs") }) { Text(stringResource(R.string.runtime_packs)) }
                     OutlinedButton({ nav.navigate("mcp_servers") }) { Text(stringResource(R.string.mcp_servers)) }
                     OutlinedButton({ nav.navigate("automations") }) { Text(stringResource(R.string.automations)) }
+                    OutlinedButton({ nav.navigate("usage") }) { Text(stringResource(R.string.usage)) }
                     OutlinedButton({ nav.navigate("storage") }) { Text(stringResource(R.string.storage)) }
                     OutlinedButton({ nav.navigate("backup_restore") }) { Text(stringResource(R.string.backup_title)) }
                     OutlinedButton({ nav.navigate("classic") }) { Text(stringResource(R.string.providers_memory_skills_settings)) }
