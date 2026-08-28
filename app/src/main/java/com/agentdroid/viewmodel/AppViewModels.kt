@@ -12,6 +12,7 @@ import com.agentdroid.core.model.*
 import com.agentdroid.core.permissions.PermissionRule
 import com.agentdroid.core.workspace.*
 import com.agentdroid.data.database.*
+import com.agentdroid.integration.ModelPlanningCoordinator
 import com.agentdroid.integration.toolRegistryWithSubagents
 import com.agentdroid.integration.SubagentTimelineHub
 import com.agentdroid.settings.AppLanguage
@@ -215,6 +216,18 @@ class ChatViewModel(private val container: AppContainer) : ViewModel() {
                 )
             }
         }
+
+        val planningContext = buildContextSnapshot(workspaceId, id, userRequest)
+        val planningOutcome = ModelPlanningCoordinator(container, model, registry).ensurePlan(session, userRequest, planningContext)
+        planningOutcome.planning?.let { planning ->
+            val label = when (planning.source) {
+                com.agentdroid.core.tasks.PlannerSource.MODEL -> "Plan created by model"
+                com.agentdroid.core.tasks.PlannerSource.REPAIRED_MODEL -> "Model plan repaired and validated"
+                com.agentdroid.core.tasks.PlannerSource.DETERMINISTIC_FALLBACK -> "Fallback plan created after model planning failed"
+            }
+            timeline.value = (timeline.value + AgentStep(label, AgentStepStatus.SUCCEEDED)).takeLast(100)
+        }
+
         val source = ContextSource { current -> buildContextSnapshot(current.workspaceId, id, userRequest) }
         val loop = AgentLoop(registry, container.permissionEngine, ContextManager(source), container.auditSink)
         var failed = false
