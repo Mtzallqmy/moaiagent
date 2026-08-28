@@ -12,7 +12,15 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
+import kotlinx.serialization.json.put
 import rikka.shizuku.Shizuku
 import java.io.File
 import java.util.concurrent.Executors
@@ -53,10 +61,13 @@ class ShizukuCommandUserService : Binder {
             val stderr = executor.submit<String> { process.errorStream.bufferedReader().use { it.readText().take(MAX_OUTPUT) } }
             val finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
             if (!finished) process.destroyForcibly()
-            JSONObject().put("exitCode", if (finished) process.exitValue() else -1)
-                .put("stdout", runCatching { stdout.get(2, TimeUnit.SECONDS) }.getOrDefault(""))
-                .put("stderr", runCatching { stderr.get(2, TimeUnit.SECONDS) }.getOrDefault(""))
-                .put("timedOut", !finished).put("durationMs", (System.nanoTime() - started) / 1_000_000).toString()
+            buildJsonObject {
+                put("exitCode", if (finished) process.exitValue() else -1)
+                put("stdout", runCatching { stdout.get(2, TimeUnit.SECONDS) }.getOrDefault(""))
+                put("stderr", runCatching { stderr.get(2, TimeUnit.SECONDS) }.getOrDefault(""))
+                put("timedOut", !finished)
+                put("durationMs", (System.nanoTime() - started) / 1_000_000)
+            }.toString()
         } finally { if (process.isAlive) process.destroyForcibly(); executor.shutdownNow() }
     }
 
@@ -125,9 +136,16 @@ class ShizukuCapability(private val context: Context) {
 
     companion object {
         private const val REQUEST_CODE = 7319
+
         fun parseResult(raw: String): PrivilegedExecutionResult {
-            val json = JSONObject(raw)
-            return PrivilegedExecutionResult(json.getInt("exitCode"), json.optString("stdout"), json.optString("stderr"), json.getBoolean("timedOut"), json.getLong("durationMs"))
+            val json = Json.parseToJsonElement(raw).jsonObject
+            return PrivilegedExecutionResult(
+                exitCode = json.getValue("exitCode").jsonPrimitive.int,
+                stdout = json["stdout"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                stderr = json["stderr"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                timedOut = json.getValue("timedOut").jsonPrimitive.boolean,
+                durationMs = json.getValue("durationMs").jsonPrimitive.long
+            )
         }
     }
 }
