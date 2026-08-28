@@ -9,6 +9,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -26,7 +28,7 @@ class WebViewBrowserEngineTest {
 
     @Before fun setUp() {
         server = MockWebServer()
-        server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody("""
+        val startPage = """
             <html><head><title>Local start</title></head><body>
               <h1>Browser integration page</h1>
               <a href="/second">Open second</a>
@@ -37,9 +39,18 @@ class WebViewBrowserEngineTest {
               </form>
               <div style="height:1600px">scroll area</div>
             </body></html>
-        """.trimIndent()))
-        server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody("<html><head><title>Second</title></head><body>Second page</body></html>"))
-        server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody("<html><head><title>Second</title></head><body>Second page</body></html>"))
+        """.trimIndent()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.requestUrl?.encodedPath) {
+                "/second" -> html("<html><head><title>Second</title></head><body>Second page</body></html>")
+                "/submit" -> html("<html><head><title>Submitted</title></head><body>Submitted</body></html>")
+                else -> html(startPage)
+            }
+
+            private fun html(body: String) = MockResponse()
+                .setHeader("Content-Type", "text/html")
+                .setBody(body)
+        }
         server.start()
         engine = WebViewBrowserEngine(ApplicationProvider.getApplicationContext<Context>())
     }
