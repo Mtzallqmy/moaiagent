@@ -18,6 +18,7 @@ import android.webkit.WebViewClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -322,7 +323,9 @@ private class WebViewBrowserSession(
         if (!isSubmit || !known.visible || !known.enabled) throw BrowserException(BrowserError.ElementNotInteractable(elementId))
         val form = readFormsUnsafe().firstOrNull { candidate -> candidate.fields.any { it.elementId == elementId } }
             ?: throw BrowserException(BrowserError.FormSubmissionDenied(elementId))
-        val domain = runCatching { java.net.URI(webView.url.orEmpty()).host.orEmpty().lowercase() }.getOrDefault("")
+        // Use the committed page state instead of reading WebView.url off the UI thread. This is
+        // also the URL shown in the permission preview, so both sides bind to the same origin.
+        val domain = runCatching { java.net.URI(_state.value.currentUrl.orEmpty()).host.orEmpty().lowercase() }.getOrDefault("")
         val bindingChecks = listOf(
             "element" to (approval.elementId == elementId),
             "form" to (approval.formElementId == form.elementId),
@@ -372,18 +375,21 @@ private class WebViewBrowserSession(
 
     override suspend fun goBack(): BrowserPageState {
         val runtime = operationMutex.withLock { ensureOpen(); activeRuntime() }
+        awaitPageIdle(runtime)
         if (!onMain { runtime.webView.canGoBack() }) return runtime.pageState
         return navigateAndAwait(runtime) { goBack() }
     }
 
     override suspend fun goForward(): BrowserPageState {
         val runtime = operationMutex.withLock { ensureOpen(); activeRuntime() }
+        awaitPageIdle(runtime)
         if (!onMain { runtime.webView.canGoForward() }) return runtime.pageState
         return navigateAndAwait(runtime) { goForward() }
     }
 
     override suspend fun reloadPage(): BrowserPageState {
         val runtime = operationMutex.withLock { ensureOpen(); activeRuntime().also { it.needsReload = false } }
+        awaitPageIdle(runtime)
         val restoredUrl = runtime.pageState.currentUrl
         return if (runtime.webView.url == null && restoredUrl != null) {
             val safeUrl = urlPolicy.requireNavigable(restoredUrl)
@@ -486,6 +492,11 @@ private class WebViewBrowserSession(
         } finally {
             onMain { if (runtime.pendingNavigation === deferred) runtime.pendingNavigation = null }
         }
+    }
+
+    /** Prevent a late callback from a click-triggered navigation completing a history operation. */
+    private suspend fun awaitPageIdle(runtime: TabRuntime) = withTimeout(10_000) {
+        while (onMain { runtime.pageState.loading }) delay(25)
     }
 
     private suspend fun refreshElement(elementId: String): BrowserElement? {

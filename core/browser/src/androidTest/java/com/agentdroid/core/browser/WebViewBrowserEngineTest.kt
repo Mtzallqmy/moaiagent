@@ -81,7 +81,8 @@ class WebViewBrowserEngineTest {
             while (!session.getCurrentUrl().endsWith("/second") || session.getPageTitle() != "Second") delay(25)
         }
         assertEquals("Second", session.getPageTitle())
-        assertTrue("back should restore the start URL", session.goBack().currentUrl.orEmpty().endsWith("/"))
+        val backUrl = session.goBack().currentUrl.orEmpty()
+        assertTrue("back should restore the start URL, was $backUrl", backUrl.endsWith("/"))
         assertTrue("forward should restore the second URL", session.goForward().currentUrl.orEmpty().endsWith("/second"))
         assertTrue("reload should retain the second URL", session.reloadPage().currentUrl.orEmpty().endsWith("/second"))
         assertTrue("scroll should be performed", session.scrollPage(ScrollDirection.DOWN, 100).performed)
