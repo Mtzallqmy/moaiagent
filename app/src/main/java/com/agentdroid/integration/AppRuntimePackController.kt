@@ -37,7 +37,13 @@ class AppRuntimePackController(
         "base-shell" -> {
             val probe = File(appContext.cacheDir, "runtime-probe").apply { mkdirs() }
             val result = runCatching {
-                container.processRunner.run(ProcessRequest(listOf("/system/bin/sh", "-c", "printf AGENTDROID_RUNTIME_OK"), probe, timeoutMs = 4_000))
+                container.processRunner.run(
+                    ProcessRequest(
+                        argv = listOf("/system/bin/sh", "-c", "printf AGENTDROID_RUNTIME_OK"),
+                        cwd = probe,
+                        timeoutMs = 4_000
+                    )
+                )
             }.getOrNull()
             result?.exitCode == 0 && !result.timedOut && result.stdout == "AGENTDROID_RUNTIME_OK"
         }
