@@ -23,5 +23,6 @@ include(
     ":core:research",
     ":core:artifacts",
     ":core:subagents",
+    ":core:localai",
     ":data:database"
 )
