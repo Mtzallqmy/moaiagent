@@ -53,9 +53,7 @@ jobs:
             \( -name '*.kt' -o -name '*.java' -o -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' -o -name '*.h' -o -name '*.hpp' -o -name '*.rs' -o -name '*.go' -o -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.lua' \) \
             -not -path './.git/*' -not -path '*/build/*' -not -path '*/.cxx/*' -not -path './.gradle/*' -not -path './third_party/*' \
             | sort > build/reports/open-source-integration/source-language-files.txt
-          awk -F. 'NF > 1 { ext=$NF; count[ext]++ } END { for (ext in count) print ext, count[ext] }' \
-            build/reports/open-source-integration/source-language-files.txt | sort \
-            > build/reports/open-source-integration/source-language-counts.txt
+          awk -F. 'NF > 1 { ext=$NF; count[ext]++ } END { for (ext in count) print ext, count[ext] }' build/reports/open-source-integration/source-language-files.txt | sort > build/reports/open-source-integration/source-language-counts.txt
           cat build/reports/open-source-integration/source-language-counts.txt
       - name: Upload build evidence
         uses: actions/upload-artifact@v4
@@ -96,4 +94,10 @@ jobs:
           target: default
           profile: pixel_6
           disable-animations: true
-          script: ./gradlew connectedDebugAndroidTest --stacktrace
+          script: |
+            ./gradlew installDebug --stacktrace
+            adb shell settings put secure enabled_accessibility_services com.agentdroid.debug/com.agentdroid.core.phone.AgentDroidAccessibilityService
+            adb shell settings put secure accessibility_enabled 1
+            adb shell am force-stop com.agentdroid.debug || true
+            sleep 2
+            ./gradlew connectedDebugAndroidTest --stacktrace
