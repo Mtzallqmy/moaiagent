@@ -1,7 +1,10 @@
-plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.android); alias(libs.plugins.kotlin.serialization); alias(libs.plugins.compose.compiler) }
+plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.android); alias(libs.plugins.kotlin.serialization); alias(libs.plugins.compose.compiler); id("com.chaquo.python") }
 
 android { namespace = "com.agentdroid"; compileSdk = 35
-    defaultConfig { applicationId = "com.agentdroid"; minSdk = 26; targetSdk = 35; versionCode = 1; versionName = "1.0.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig {
+        applicationId = "com.agentdroid"; minSdk = 26; targetSdk = 35; versionCode = 1; versionName = "1.0.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_1_8; targetCompatibility = JavaVersion.VERSION_1_8 }
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach { kotlinOptions.jvmTarget = "1.8" }
     buildTypes { debug { applicationIdSuffix = ".debug" }; release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") } }
@@ -9,6 +12,8 @@ android { namespace = "com.agentdroid"; compileSdk = 35
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
+
+chaquopy { defaultConfig { version = "3.13" } }
 
 dependencies {
     implementation(project(":core:model")); implementation(project(":core:ai")); implementation(project(":core:agent")); implementation(project(":core:permissions")); implementation(project(":core:workspace")); implementation(project(":core:runtime")); implementation(project(":core:terminal")); implementation(project(":core:git")); implementation(project(":core:browser")); implementation(project(":core:tasks")); implementation(project(":core:research")); implementation(project(":core:artifacts")); implementation(project(":core:subagents")); implementation(project(":core:localai")); implementation(project(":data:database"))
