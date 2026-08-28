@@ -3,7 +3,7 @@ package com.agentdroid.core.model
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
-enum class ProviderKind { OPENAI, ANTHROPIC, GEMINI, OPENROUTER, COMPATIBLE, FAKE }
+enum class ProviderKind { OPENAI, ANTHROPIC, GEMINI, OPENROUTER, COMPATIBLE, LOCAL, FAKE }
 enum class MessageRole { USER, ASSISTANT, SYSTEM, TOOL }
 enum class MessageStatus { PENDING, STREAMING, COMPLETED, FAILED, CANCELLED }
 enum class MemoryScope { GLOBAL, WORKSPACE }
