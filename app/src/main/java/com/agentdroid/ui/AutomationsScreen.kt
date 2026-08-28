@@ -15,16 +15,15 @@ import com.agentdroid.R
 import com.agentdroid.automation.AutomationManager
 import com.agentdroid.automation.WorkspaceAutomation
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import java.util.UUID
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AutomationsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as AgentDroidApplication
     val manager = remember { AutomationManager(context) }
     val scheduled by manager.automations.collectAsState()
-    val scope = rememberCoroutineScope()
     var workspaces by remember { mutableStateOf(emptyList<com.agentdroid.data.database.WorkspaceEntity>()) }
     var conversations by remember { mutableStateOf(emptyList<com.agentdroid.data.database.ConversationEntity>()) }
     var title by remember { mutableStateOf("") }
