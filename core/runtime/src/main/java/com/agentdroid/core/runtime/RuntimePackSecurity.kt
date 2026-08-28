@@ -51,7 +51,6 @@ data class RuntimePackState(
     val verifiedChecksum: String? = null,
     val error: String? = null
 ) {
-    /** Installation/package state only. Runtime execution support requires a separate execution probe. */
     val installedOrBundled: Boolean get() = status == RuntimePackStatus.INSTALLED || status == RuntimePackStatus.BUNDLED
 }
 
@@ -66,10 +65,7 @@ class VerifiedZipRuntimePackInstaller(
     private val maxArchiveBytes: Long = 512L * 1024 * 1024,
     private val maxExpandedBytes: Long = 2L * 1024 * 1024 * 1024
 ) : RuntimePackInstaller {
-    init {
-        require(maxArchiveBytes > 0 && maxExpandedBytes >= maxArchiveBytes)
-        installRoot.mkdirs()
-    }
+    init { require(maxArchiveBytes > 0 && maxExpandedBytes >= maxArchiveBytes); installRoot.mkdirs() }
 
     override suspend fun install(manifest: RuntimePackManifest): Result<RuntimePackState> = withContext(Dispatchers.IO) {
         runCatching {
@@ -79,24 +75,17 @@ class VerifiedZipRuntimePackInstaller(
             val digest = MessageDigest.getInstance("SHA-256")
             var bytes = 0L
             try {
-                openSource(manifest.source).use { input ->
-                    archive.outputStream().buffered().use { output ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            if (count == 0) continue
-                            bytes += count
-                            require(bytes <= maxArchiveBytes) { "Runtime pack archive is too large" }
-                            digest.update(buffer, 0, count)
-                            output.write(buffer, 0, count)
-                        }
+                openSource(manifest.source).use { input -> archive.outputStream().buffered().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val count = input.read(buffer); if (count < 0) break; if (count == 0) continue
+                        bytes += count; require(bytes <= maxArchiveBytes) { "Runtime pack archive is too large" }
+                        digest.update(buffer, 0, count); output.write(buffer, 0, count)
                     }
-                }
+                } }
                 val actual = digest.digest().joinToString("") { "%02x".format(it) }
                 require(actual == manifest.checksum) { "Runtime pack SHA-256 mismatch" }
                 if (manifest.sizeBytes > 0) require(bytes == manifest.sizeBytes) { "Runtime pack size mismatch" }
-
                 val expanded = File(staging, "expanded").apply { mkdirs() }
                 var expandedBytes = 0L
                 ZipInputStream(archive.inputStream().buffered()).use { zip ->
@@ -107,14 +96,11 @@ class VerifiedZipRuntimePackInstaller(
                         val target = File(expanded, name).canonicalFile
                         require(target == expanded.canonicalFile || target.path.startsWith(expanded.canonicalPath + File.separator)) { "Runtime pack entry escapes install directory" }
                         if (entry.isDirectory) target.mkdirs() else {
-                            target.parentFile?.mkdirs()
-                            target.outputStream().buffered().use { output ->
+                            target.parentFile?.mkdirs(); target.outputStream().buffered().use { output ->
                                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                                 while (true) {
-                                    val count = zip.read(buffer)
-                                    if (count < 0) break
-                                    expandedBytes += count
-                                    require(expandedBytes <= maxExpandedBytes) { "Runtime pack expands beyond safety limit" }
+                                    val count = zip.read(buffer); if (count < 0) break
+                                    expandedBytes += count; require(expandedBytes <= maxExpandedBytes) { "Runtime pack expands beyond safety limit" }
                                     output.write(buffer, 0, count)
                                 }
                             }
@@ -132,13 +118,7 @@ class VerifiedZipRuntimePackInstaller(
                 if (destination.exists()) require(destination.deleteRecursively()) { "Could not replace installed runtime pack" }
                 require(expanded.renameTo(destination)) { "Could not commit runtime pack installation" }
                 val installedAt = System.currentTimeMillis()
-                RuntimePackState(
-                    manifest = manifest.copy(installedAt = installedAt),
-                    status = RuntimePackStatus.INSTALLED,
-                    installedAt = installedAt,
-                    installPath = destination.canonicalPath,
-                    verifiedChecksum = actual
-                )
+                RuntimePackState(manifest.copy(installedAt = installedAt), RuntimePackStatus.INSTALLED, installedAt, destination.canonicalPath, actual)
             } finally { staging.deleteRecursively() }
         }
     }
@@ -147,8 +127,7 @@ class VerifiedZipRuntimePackInstaller(
         runCatching {
             require(state.manifest.sourceKind == RuntimePackSourceKind.TRUSTED_DOWNLOAD) { "Bundled/platform runtimes cannot be uninstalled" }
             val path = state.installPath ?: return@runCatching
-            val target = File(path).canonicalFile
-            val root = installRoot.canonicalFile
+            val target = File(path).canonicalFile; val root = installRoot.canonicalFile
             require(target.parentFile == root) { "Runtime uninstall target is outside runtime root" }
             require(!target.exists() || target.deleteRecursively()) { "Could not remove runtime pack" }
         }
@@ -159,28 +138,23 @@ object RuntimePackManifests {
     val baseShell = RuntimePackManifest(
         id = "base-shell", displayName = "Android shell", version = "platform",
         architectures = listOf("platform"), sizeBytes = 0, checksum = "platform-managed",
-        source = "Android platform", license = "Android platform component", executables = listOf("sh"),
-        sourceKind = RuntimePackSourceKind.PLATFORM
+        source = "Android platform", license = "Android platform component", executables = listOf("sh"), sourceKind = RuntimePackSourceKind.PLATFORM
     )
     val git = RuntimePackManifest(
-        id = "git", displayName = "Git", version = "JGit embedded",
-        architectures = listOf("jvm"), sizeBytes = 0, checksum = "apk-signature-bound",
-        source = "org.eclipse.jgit", license = "Eclipse Distribution License 1.0", executables = listOf("embedded:jgit"),
-        sourceKind = RuntimePackSourceKind.EMBEDDED
+        id = "git", displayName = "Git", version = "JGit embedded", architectures = listOf("jvm"), sizeBytes = 0,
+        checksum = "apk-signature-bound", source = "org.eclipse.jgit", license = "Eclipse Distribution License 1.0",
+        executables = listOf("embedded:jgit"), sourceKind = RuntimePackSourceKind.EMBEDDED
     )
     val python = RuntimePackManifest(
-        id = "python", displayName = "Python", version = "3.13 / Chaquopy 17.0.0",
-        architectures = listOf("arm64-v8a", "x86_64"), sizeBytes = 0, checksum = "apk-signature-bound",
-        source = "com.chaquo.python 17.0.0", license = "MIT + CPython PSF-2.0", executables = listOf("embedded:python3"),
-        sourceKind = RuntimePackSourceKind.EMBEDDED
+        id = "python", displayName = "Python", version = "3.13 / Chaquopy 17.0.0", architectures = listOf("arm64-v8a", "x86_64"), sizeBytes = 0,
+        checksum = "apk-signature-bound", source = "com.chaquo.python 17.0.0", license = "MIT + CPython PSF-2.0",
+        executables = listOf("embedded:python3"), sourceKind = RuntimePackSourceKind.EMBEDDED
     )
     val node = RuntimePackManifest(
-        id = "node", displayName = "Node.js Mobile", version = "18.20.4",
-        architectures = listOf("arm64-v8a", "x86_64"), sizeBytes = 57_287_354,
+        id = "node", displayName = "Node.js Mobile", version = "18.20.4", architectures = listOf("arm64-v8a", "x86_64"), sizeBytes = 57_287_354,
         checksum = "bd7321eaa1a7602fbe0bb87302df2d79d87835cf4363fbdd17c350dbb485c2af",
         source = "https://github.com/nodejs-mobile/nodejs-mobile/releases/download/v18.20.4/nodejs-mobile-v18.20.4-android.zip",
-        license = "MIT (Node.js Mobile) + bundled Node.js third-party notices",
-        executables = listOf("bin/arm64-v8a/libnode.so", "bin/x86_64/libnode.so"),
-        sourceKind = RuntimePackSourceKind.TRUSTED_DOWNLOAD
+        license = "MIT (Node.js Mobile) + bundled Node.js third-party notices", executables = listOf("embedded:libnode.so"),
+        sourceKind = RuntimePackSourceKind.EMBEDDED
     )
 }

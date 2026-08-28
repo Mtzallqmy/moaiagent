@@ -1,0 +1,10 @@
+<resources>
+    <string name="usage_cost_estimate">Estimated configured cost</string>
+    <string name="usage_unpriced">Unpriced records: %1$d</string>
+    <string name="usage_set_pricing">Set pricing</string>
+    <string name="usage_pricing_title">Token pricing: %1$s</string>
+    <string name="usage_input_rate">Input USD / 1M tokens</string>
+    <string name="usage_output_rate">Output USD / 1M tokens</string>
+    <string name="usage_clear_session">Clear usage session</string>
+    <string name="usage_pricing_note">Prices are user-configured because provider prices change. Cost is never guessed.</string>
+</resources>

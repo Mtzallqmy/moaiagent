@@ -1,0 +1,10 @@
+<resources>
+    <string name="usage_cost_estimate">التكلفة المقدرة وفق الأسعار المضبوطة</string>
+    <string name="usage_unpriced">سجلات بلا سعر: %1$d</string>
+    <string name="usage_set_pricing">ضبط السعر</string>
+    <string name="usage_pricing_title">سعر الرموز: %1$s</string>
+    <string name="usage_input_rate">دولار الإدخال / مليون رمز</string>
+    <string name="usage_output_rate">دولار الإخراج / مليون رمز</string>
+    <string name="usage_clear_session">مسح استخدام الجلسة</string>
+    <string name="usage_pricing_note">الأسعار يضبطها المستخدم لأن أسعار الموفرين تتغير. لا يتم تخمين التكلفة.</string>
+</resources>

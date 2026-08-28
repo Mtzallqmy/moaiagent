@@ -2,6 +2,10 @@ package com.agentdroid.core.ai.transport
 
 import com.agentdroid.core.ai.ErrorMapper
 import com.agentdroid.core.model.AppError
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -12,6 +16,7 @@ import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -21,18 +26,45 @@ class HttpTransport(
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 ) {
-    suspend fun execute(request: Request): Response = suspendCancellableCoroutine { continuation ->
-        val call = client.newCall(request)
-        continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                if (continuation.isCancelled) return
-                continuation.resumeWithException(e)
+    @OptIn(InternalCoroutinesApi::class)
+    suspend fun execute(request: Request): Response {
+        val job = currentCoroutineContext()[Job]
+        return suspendCancellableCoroutine { continuation ->
+            val call = client.newCall(request)
+            val responseRef = AtomicReference<Response?>(null)
+
+            // Streaming providers can block inside Okio while waiting for the next SSE chunk.
+            // A regular invokeOnCompletion handler runs too late in that case: the Job cannot
+            // complete until the blocking read returns. Register for the cancelling transition
+            // so the socket is closed immediately and the blocked read is interrupted.
+            job?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
+                if (cause != null) {
+                    call.cancel()
+                    responseRef.getAndSet(null)?.close()
+                }
             }
-            override fun onResponse(call: Call, response: Response) {
-                if (continuation.isCancelled) response.close() else continuation.resume(response)
+
+            continuation.invokeOnCancellation {
+                call.cancel()
+                responseRef.getAndSet(null)?.close()
             }
-        })
+
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isCancelled) return
+                    continuation.resumeWithException(e)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    responseRef.set(response)
+                    if (continuation.isCancelled) {
+                        responseRef.getAndSet(null)?.close()
+                        return
+                    }
+                    continuation.resume(response)
+                }
+            })
+        }
     }
 
     fun request(
@@ -48,11 +80,14 @@ class HttpTransport(
     }
 }
 
-fun Throwable.toAppError(): AppError = when (this) {
-    is java.net.SocketTimeoutException -> AppError.Timeout(message ?: "timeout")
-    is javax.net.ssl.SSLException -> AppError.Ssl(message ?: "ssl")
-    is IOException -> AppError.Network(message ?: "network")
-    else -> AppError.Unknown(message ?: javaClass.simpleName)
+fun Throwable.toAppError(): AppError {
+    if (this is CancellationException) throw this
+    return when (this) {
+        is java.net.SocketTimeoutException -> AppError.Timeout(message ?: "timeout")
+        is javax.net.ssl.SSLException -> AppError.Ssl(message ?: "ssl")
+        is IOException -> AppError.Network(message ?: "network")
+        else -> AppError.Unknown(message ?: javaClass.simpleName)
+    }
 }
 
 fun Response.requireSuccess(): Response = takeIf { isSuccessful } ?: run {

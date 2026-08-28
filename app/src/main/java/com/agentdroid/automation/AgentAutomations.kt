@@ -3,7 +3,12 @@ package com.agentdroid.automation
 import android.content.Context
 import androidx.work.*
 import com.agentdroid.AgentDroidApplication
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
 
 @Serializable
@@ -29,8 +34,15 @@ data class WorkspaceAutomation(
 }
 
 class AutomationManager(context: Context) {
-    private val work = WorkManager.getInstance(context.applicationContext)
+    private val appContext = context.applicationContext
+    private val work = WorkManager.getInstance(appContext)
+    private val prefs = appContext.getSharedPreferences("agentdroid_automations", Context.MODE_PRIVATE)
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val serializer = ListSerializer(WorkspaceAutomation.serializer())
+    private val _automations = MutableStateFlow(load())
+    val automations: StateFlow<List<WorkspaceAutomation>> = _automations.asStateFlow()
 
+    @Synchronized
     fun schedule(spec: WorkspaceAutomation) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(if (spec.requiresNetwork) NetworkType.CONNECTED else NetworkType.NOT_REQUIRED)
@@ -63,12 +75,35 @@ class AutomationManager(context: Context) {
                 .build()
             work.enqueueUniquePeriodicWork("agentdroid-automation-${spec.id}", ExistingPeriodicWorkPolicy.UPDATE, request)
         }
+        val updated = (_automations.value.filterNot { it.id == spec.id } + spec).sortedBy { it.title.lowercase() }
+        persist(updated)
     }
 
-    fun cancel(id: String) = work.cancelUniqueWork("agentdroid-automation-$id")
-    fun cancelAll() = work.cancelAllWorkByTag(TAG)
+    @Synchronized
+    fun cancel(id: String) {
+        work.cancelUniqueWork("agentdroid-automation-$id")
+        persist(_automations.value.filterNot { it.id == id })
+    }
 
-    companion object { private const val TAG = "agentdroid-automation" }
+    @Synchronized
+    fun cancelAll() {
+        work.cancelAllWorkByTag(TAG)
+        persist(emptyList())
+    }
+
+    private fun load(): List<WorkspaceAutomation> = runCatching {
+        prefs.getString(KEY_SPECS, null)?.let { json.decodeFromString(serializer, it) }.orEmpty()
+    }.getOrDefault(emptyList())
+
+    private fun persist(items: List<WorkspaceAutomation>) {
+        _automations.value = items
+        prefs.edit().putString(KEY_SPECS, json.encodeToString(serializer, items)).apply()
+    }
+
+    companion object {
+        private const val TAG = "agentdroid-automation"
+        private const val KEY_SPECS = "specifications"
+    }
 }
 
 /**
