@@ -323,13 +323,15 @@ private class WebViewBrowserSession(
         val form = readFormsUnsafe().firstOrNull { candidate -> candidate.fields.any { it.elementId == elementId } }
             ?: throw BrowserException(BrowserError.FormSubmissionDenied(elementId))
         val domain = runCatching { java.net.URI(webView.url.orEmpty()).host.orEmpty().lowercase() }.getOrDefault("")
-        if (
-            approval.elementId != elementId ||
-            approval.formElementId != form.elementId ||
-            !sameOriginHost(approval.domain, domain) ||
-            !sameAction(approval.action, form.action)
-        ) {
-            throw BrowserException(BrowserError.FormSubmissionDenied(elementId))
+        val bindingChecks = listOf(
+            "element" to (approval.elementId == elementId),
+            "form" to (approval.formElementId == form.elementId),
+            "origin" to sameOriginHost(approval.domain, domain),
+            "action" to sameAction(approval.action, form.action)
+        )
+        if (bindingChecks.any { !it.second }) {
+            val failedBindings = bindingChecks.filterNot { it.second }.joinToString(",") { it.first }
+            throw BrowserException(BrowserError.FormSubmissionDenied(elementId, "approval binding mismatch: $failedBindings"))
         }
         val result = decodeJavascriptString(evaluateFixed(clickScript(elementId)))
         when (result) {
@@ -541,12 +543,13 @@ private class WebViewBrowserSession(
         progress: Int = _state.value.progress,
         lastError: BrowserError? = _state.value.lastError
     ) {
-        updateTabState(activeTabId, title, loading, progress, lastError)
+        updateTabState(activeTabId, title = title, loading = loading, progress = progress, lastError = lastError)
     }
 
     private fun updateTabState(
         tabId: String,
         title: String = runtimes[tabId]?.webView?.title.orEmpty(),
+        currentUrl: String? = runtimes[tabId]?.webView?.url ?: runtimes[tabId]?.pageState?.currentUrl,
         loading: Boolean = runtimes[tabId]?.pageState?.loading ?: false,
         progress: Int = runtimes[tabId]?.pageState?.progress ?: 0,
         lastError: BrowserError? = runtimes[tabId]?.pageState?.lastError
@@ -554,7 +557,7 @@ private class WebViewBrowserSession(
         val runtime = runtimes[tabId] ?: return
         runtime.pageState = BrowserPageState(
             title = title,
-            currentUrl = runtime.webView.url ?: runtime.pageState.currentUrl,
+            currentUrl = currentUrl,
             loading = loading,
             progress = progress,
             canGoBack = runtime.webView.canGoBack(),
@@ -631,11 +634,11 @@ private class WebViewBrowserSession(
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             runtimes[tabId]?.cachedElements = emptyList()
-            updateTabState(tabId, loading = true, progress = 0, lastError = null)
+            updateTabState(tabId, currentUrl = url, loading = true, progress = 0, lastError = null)
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
-            updateTabState(tabId, loading = false, progress = 100)
+            updateTabState(tabId, currentUrl = url, loading = false, progress = 100)
             runtimes[tabId]?.pendingNavigation?.complete(runtimes[tabId]?.pageState ?: return)
         }
 

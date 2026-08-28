@@ -166,7 +166,10 @@ sealed class BrowserError(open val technicalMessage: String, open val recoverabl
     data class UnsafeUrl(override val technicalMessage: String, val url: String, val scheme: String?) : BrowserError(technicalMessage, false)
     data class ElementNotFound(val elementId: String) : BrowserError("Element not found: $elementId")
     data class ElementNotInteractable(val elementId: String) : BrowserError("Element is not visible or enabled: $elementId")
-    data class FormSubmissionDenied(val elementId: String) : BrowserError("Form submission denied: $elementId", false)
+    data class FormSubmissionDenied(val elementId: String, val reason: String? = null) : BrowserError(
+        "Form submission denied: $elementId${reason?.let { " ($it)" }.orEmpty()}",
+        false
+    )
     data class Screenshot(override val technicalMessage: String) : BrowserError(technicalMessage)
     data class SessionClosed(val sessionId: String) : BrowserError("Browser session is closed: $sessionId", false)
     data class TabNotFound(val tabId: String) : BrowserError("Browser tab not found: $tabId", false)
