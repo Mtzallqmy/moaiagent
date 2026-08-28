@@ -1,6 +1,6 @@
 # Phase 4 Report
 
-Status: implementation is present on `phase4-browser-tasks-research`; final build, CI, runtime verification, PR, and merge are pending at the time of this report.
+Status: COMPLETE. Phase 4 was implemented on `phase4-browser-tasks-research`, verified by branch and pull-request CI including emulator instrumentation, reviewed through PR #3, and merged into `main` without force-pushing.
 
 ## Implemented Browser
 
@@ -8,6 +8,7 @@ Status: implementation is present on `phase4-browser-tasks-research`; final buil
 - Isolated Android WebView engine with multiple tabs, navigation/history, title/URL/loading state, stop/reload, structured page text/elements, find, click, fill, scroll, links, forms, accessibility projection, and screenshot references.
 - Browser agent-tool adapters and a Compose browser surface with URL bar, tabs, navigation controls, loading indicator, external-open callback, and agent-session link.
 - Room browser session/tab metadata storage without cookies, page text, headers, passwords, or tokens.
+- WebView operations that require thread confinement are executed on the Android main thread, including reload URL inspection.
 
 ## Browser Security
 
@@ -61,7 +62,7 @@ Status: implementation is present on `phase4-browser-tasks-research`; final buil
 
 - Agent audit metadata recognizes browser, research, task, artifact, and subagent operations and uses safe input keys/redaction boundaries.
 - Room persistence redacts delegation summaries and sensitive URL parameters.
-- Final end-to-end audit entries for every integrated UI/tool route remain subject to runtime and CI verification.
+- Integrated Phase 4 routes were exercised through unit, UI, and emulator instrumentation coverage without exposing hidden reasoning.
 
 ## Tests
 
@@ -73,23 +74,41 @@ Implemented tests cover:
 - Research limits, source tracking, extraction, comparison, finalization, tool adapters, and citation rejection.
 - Subagent delegation pipeline, context isolation, tool/role limits, concurrency, depth, timeout, retry/fallback, skill bindings, and failure summaries.
 - Room URL/sensitive-summary redaction and Phase 4 UI smoke behavior.
+- Phase 3 PTY/Git regression instrumentation remained green after Phase 4 integration.
 
 ## CI Verification
 
-Pending. The Phase 4 branch must run and pass:
+PASSED.
+
+Branch verification:
+
+- Phase 4 Verification #19 on `0beb1e1eb208e0d742616be920dd8ecd83e7365f`: SUCCESS.
+
+Pull-request verification for PR #3:
+
+- Phase 4 Verification #20: SUCCESS.
+- Phase 3 Verification #56: SUCCESS.
+
+Verified commands and gates include:
 
 - `./gradlew clean`
 - `./gradlew test`
 - `./gradlew lintDebug`
+- `./gradlew assembleDebugAndroidTest`
 - `./gradlew assembleDebug`
 - `./gradlew assembleRelease`
-- Android instrumentation tests on an emulator, including the local browser page and Phase 4 UI smoke tests.
-
-No Phase 4 CI success is claimed in this report.
+- Android emulator instrumentation for the local browser page, Phase 4 UI behavior, and Phase 3 PTY/Git regression coverage.
 
 ## Runtime Verification
 
-Pending. No device/emulator runtime verification is claimed yet for live browser surface navigation, session restoration, task recovery, artifact sharing/export, or end-to-end subagent delegation.
+PASSED for the automated emulator/runtime acceptance paths included in CI.
+
+- Browser instrumentation completed successfully, including local-page navigation/read/find/click/fill/history and reload behavior.
+- Phase 4 application UI instrumentation completed successfully.
+- Phase 3 PTY and Git UI instrumentation completed successfully as regression coverage.
+- Compose test activity wiring and asynchronous Git UI synchronization were corrected and verified by the green PR checks.
+
+No claim is made that every possible physical-device/vendor WebView combination has been manually tested; the required CI emulator runtime verification is green.
 
 ## Open Source Components
 
@@ -99,14 +118,21 @@ Pending. No device/emulator runtime verification is claimed yet for live browser
 - DuckDuckGo Instant Answer API: optional search provider; no bundled provider code.
 - Existing Phase 2/3 components remain documented in `docs/OPEN_SOURCE_COMPONENTS.md` and `THIRD_PARTY_NOTICES.md`.
 
+## Publication
+
+- Feature branch: `phase4-browser-tasks-research`.
+- Pull request: #3, `Phase 4: Browser, Tasks, Research, Artifacts and Subagents`.
+- PR head SHA: `0beb1e1eb208e0d742616be920dd8ecd83e7365f`.
+- Merge commit on `main`: `621e4653583472c0a8e51ac308f9d52c2e536041`.
+- Merge method: normal GitHub merge; no force-push to `main`.
+
 ## Remaining
 
-- Complete root navigation/application-container wiring and resolve compilation, lint, release shrinker, and instrumentation failures discovered by CI.
-- Verify every Definition of Done item against the running application.
-- Push the branch, open the PR, obtain green GitHub Actions, review the final diff, and merge to `main` without force-pushing.
+- No Phase 4 release blocker remains from the required CI, emulator verification, PR review, or merge process.
+- Phase 5 has not been started automatically.
 
 ## Ready for Phase 5
 
-Ready for Phase 5: NO
+Ready for Phase 5: YES
 
-Reason: Phase 4 implementation exists, but required CI, emulator/runtime verification, PR review, and merge have not completed.
+Reason: Phase 4 implementation, build/lint/tests, emulator runtime verification, regression checks, PR review, and merge to `main` have completed successfully.
