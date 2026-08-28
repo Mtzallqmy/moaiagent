@@ -19,6 +19,7 @@ include(
     ":core:terminal",
     ":core:git",
     ":core:browser",
+    ":core:phone",
     ":core:tasks",
     ":core:research",
     ":core:artifacts",
