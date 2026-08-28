@@ -1,42 +1,33 @@
 package com.agentdroid.core.mcp
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class HttpMcpClient(
     override val config: McpServerConfig,
     private val credentials: McpCredentialResolver = McpCredentialResolver { null },
-    private val http: OkHttpClient = OkHttpClient(),
+    private val http: OkHttpClient = defaultHttpClient(),
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) : McpClient {
     private val ids = AtomicLong(1)
     @Volatile private var sessionId: String? = null
     @Volatile private var negotiatedVersion: String = SUPPORTED_PROTOCOL
 
-    override suspend fun connect(): Result<McpServerIdentity> = runCatching {
-        require(config.enabled) { "MCP server is disabled" }
-        val result = rpc("initialize", buildJsonObject {
-            put("protocolVersion", SUPPORTED_PROTOCOL)
-            put("capabilities", buildJsonObject {})
-            put("clientInfo", buildJsonObject { put("name", "AgentDroid"); put("version", "1.0") })
-        }, initializing = true)
-        val protocol = result["protocolVersion"]?.jsonPrimitive?.contentOrNull ?: SUPPORTED_PROTOCOL
-        require(protocol in ACCEPTED_PROTOCOLS) { "Unsupported MCP protocol version: $protocol" }
-        negotiatedVersion = protocol
-        notify("notifications/initialized", buildJsonObject {})
-        val info = result["serverInfo"]?.jsonObject
-        McpServerIdentity(
-            name = info?.get("name")?.jsonPrimitive?.contentOrNull ?: config.name,
-            version = info?.get("version")?.jsonPrimitive?.contentOrNull,
-            protocolVersion = protocol
-        )
-    }
+    override suspend fun connect(): Result<McpServerIdentity> = runCatching { initializeSession() }
 
     override suspend fun ping(): Result<Unit> = runCatching { rpc("ping", buildJsonObject {}); Unit }
 
@@ -74,10 +65,33 @@ class HttpMcpClient(
     override suspend fun disconnect(): Result<Unit> = runCatching {
         val sid = sessionId
         sessionId = null
-        if (sid != null) withContext(Dispatchers.IO) {
+        if (sid != null) {
             val request = baseRequest().delete().header("Mcp-Session-Id", sid).build()
-            http.newCall(request).execute().close()
+            execute(request).use { response ->
+                require(response.isSuccessful || response.code == 404) { "MCP disconnect HTTP ${response.code}" }
+            }
         }
+    }
+
+    private suspend fun initializeSession(): McpServerIdentity {
+        require(config.enabled) { "MCP server is disabled" }
+        sessionId = null
+        negotiatedVersion = SUPPORTED_PROTOCOL
+        val result = rpcOnce("initialize", buildJsonObject {
+            put("protocolVersion", SUPPORTED_PROTOCOL)
+            put("capabilities", buildJsonObject {})
+            put("clientInfo", buildJsonObject { put("name", "AgentDroid"); put("version", "1.1") })
+        }, initializing = true)
+        val protocol = result["protocolVersion"]?.jsonPrimitive?.contentOrNull ?: SUPPORTED_PROTOCOL
+        require(protocol in ACCEPTED_PROTOCOLS) { "Unsupported MCP protocol version: $protocol" }
+        negotiatedVersion = protocol
+        notify("notifications/initialized", buildJsonObject {})
+        val info = result["serverInfo"]?.jsonObject
+        return McpServerIdentity(
+            name = info?.get("name")?.jsonPrimitive?.contentOrNull ?: config.name,
+            version = info?.get("version")?.jsonPrimitive?.contentOrNull,
+            protocolVersion = protocol
+        )
     }
 
     private suspend fun paginate(method: String, field: String, maxPages: Int = 20): List<JsonElement> {
@@ -97,7 +111,16 @@ class HttpMcpClient(
         post(buildJsonObject { put("jsonrpc", "2.0"); put("method", method); put("params", params) }, expectsResponse = false)
     }
 
-    private suspend fun rpc(method: String, params: JsonObject, initializing: Boolean = false): JsonObject {
+    private suspend fun rpc(method: String, params: JsonObject): JsonObject {
+        return try {
+            rpcOnce(method, params, initializing = false)
+        } catch (expired: McpSessionExpiredException) {
+            initializeSession()
+            rpcOnce(method, params, initializing = false)
+        }
+    }
+
+    private suspend fun rpcOnce(method: String, params: JsonObject, initializing: Boolean): JsonObject {
         val id = ids.getAndIncrement()
         val envelope = buildJsonObject {
             put("jsonrpc", "2.0"); put("id", id); put("method", method); put("params", params)
@@ -109,22 +132,39 @@ class HttpMcpClient(
         return response["result"]?.jsonObject ?: JsonObject(emptyMap())
     }
 
-    private suspend fun post(payload: JsonObject, expectsResponse: Boolean, initializing: Boolean = false): JsonObject = withContext(Dispatchers.IO) {
+    private suspend fun post(payload: JsonObject, expectsResponse: Boolean, initializing: Boolean = false): JsonObject {
         val body = payload.toString().toRequestBody(JSON)
         val builder = baseRequest().post(body).header("Accept", "application/json, text/event-stream")
-        sessionId?.let { builder.header("Mcp-Session-Id", it) }
+        val attachedSession = sessionId
+        attachedSession?.let { builder.header("Mcp-Session-Id", it) }
         if (!initializing) builder.header("MCP-Protocol-Version", negotiatedVersion)
-        val response = http.newCall(builder.build()).execute()
-        response.use {
+        return execute(builder.build()).use { response ->
+            if (attachedSession != null && response.code in SESSION_EXPIRED_CODES) {
+                sessionId = null
+                throw McpSessionExpiredException(response.code)
+            }
             if (initializing) response.header("Mcp-Session-Id")?.takeIf { it.length <= 512 }?.let { sessionId = it }
             require(response.isSuccessful) { "MCP HTTP ${response.code}" }
-            if (!expectsResponse || response.code == 202) return@withContext JsonObject(emptyMap())
+            if (!expectsResponse || response.code == 202) return@use JsonObject(emptyMap())
             val text = response.body?.string().orEmpty()
             require(text.toByteArray().size <= MAX_RESPONSE_BYTES) { "MCP response exceeds limit" }
             val contentType = response.header("Content-Type").orEmpty().lowercase()
             val jsonText = if ("text/event-stream" in contentType) extractSseJson(text) else text
             json.parseToJsonElement(jsonText).jsonObject
         }
+    }
+
+    private suspend fun execute(request: Request): Response = suspendCancellableCoroutine { continuation ->
+        val call = http.newCall(request)
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (continuation.isActive) continuation.resumeWithException(e)
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (continuation.isActive) continuation.resume(response) else response.close()
+            }
+        })
     }
 
     private suspend fun baseRequest(): Request.Builder {
@@ -135,15 +175,33 @@ class HttpMcpClient(
     }
 
     private fun extractSseJson(body: String): String {
-        val data = body.lineSequence().firstOrNull { it.startsWith("data:") }?.removePrefix("data:")?.trim()
-        require(!data.isNullOrBlank()) { "MCP SSE response contained no data event" }
-        return data
+        val candidates = body.lineSequence()
+            .filter { it.startsWith("data:") }
+            .map { it.removePrefix("data:").trim() }
+            .filter { it.isNotBlank() }
+        return candidates.firstOrNull { candidate ->
+            runCatching {
+                val root = json.parseToJsonElement(candidate).jsonObject
+                root["jsonrpc"]?.jsonPrimitive?.contentOrNull == "2.0" && ("result" in root || "error" in root || "id" in root)
+            }.getOrDefault(false)
+        } ?: error("MCP SSE response contained no JSON-RPC data event")
     }
+
+    private class McpSessionExpiredException(code: Int) : IOException("MCP session expired with HTTP $code")
 
     companion object {
         const val SUPPORTED_PROTOCOL = "2025-11-25"
         val ACCEPTED_PROTOCOLS = setOf("2025-11-25", "2025-06-18", "2025-03-26")
         private val JSON = "application/json; charset=utf-8".toMediaType()
+        private val SESSION_EXPIRED_CODES = setOf(404, 409)
         private const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+
+        fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(45, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
     }
 }
