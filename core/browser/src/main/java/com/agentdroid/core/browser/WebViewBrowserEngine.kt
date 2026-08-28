@@ -95,6 +95,9 @@ private class WebViewBrowserSession(
         var pageState: BrowserPageState,
         var pendingNavigation: CompletableDeferred<BrowserPageState>? = null,
         var pendingExpectedUrl: String? = null,
+        var pendingHistoryIndex: Int? = null,
+        val visitedUrls: MutableList<String> = mutableListOf(),
+        var historyIndex: Int = -1,
         var cachedElements: List<BrowserElement> = emptyList(),
         var lastUsedAt: Long = System.currentTimeMillis(),
         var needsReload: Boolean = false
@@ -377,25 +380,21 @@ private class WebViewBrowserSession(
     override suspend fun goBack(): BrowserPageState {
         val runtime = operationMutex.withLock { ensureOpen(); activeRuntime() }
         awaitPageIdle(runtime)
-        val expectedUrl = onMain {
-            if (!runtime.webView.canGoBack()) return@onMain null
-            runtime.webView.copyBackForwardList().let { history ->
-                history.getItemAtIndex(history.currentIndex - 1)?.url
-            }
-        } ?: return runtime.pageState
-        return navigateAndAwait(runtime, expectedUrl) { goBack() }
+        val targetIndex = runtime.historyIndex - 1
+        val expectedUrl = runtime.visitedUrls.getOrNull(targetIndex) ?: return runtime.pageState
+        return navigateAndAwait(runtime, expectedUrl, targetIndex) {
+            if (canGoBack()) goBack() else loadUrl(expectedUrl)
+        }
     }
 
     override suspend fun goForward(): BrowserPageState {
         val runtime = operationMutex.withLock { ensureOpen(); activeRuntime() }
         awaitPageIdle(runtime)
-        val expectedUrl = onMain {
-            if (!runtime.webView.canGoForward()) return@onMain null
-            runtime.webView.copyBackForwardList().let { history ->
-                history.getItemAtIndex(history.currentIndex + 1)?.url
-            }
-        } ?: return runtime.pageState
-        return navigateAndAwait(runtime, expectedUrl) { goForward() }
+        val targetIndex = runtime.historyIndex + 1
+        val expectedUrl = runtime.visitedUrls.getOrNull(targetIndex) ?: return runtime.pageState
+        return navigateAndAwait(runtime, expectedUrl, targetIndex) {
+            if (canGoForward()) goForward() else loadUrl(expectedUrl)
+        }
     }
 
     override suspend fun reloadPage(): BrowserPageState {
@@ -485,6 +484,7 @@ private class WebViewBrowserSession(
     private suspend fun navigateAndAwait(
         runtime: TabRuntime,
         expectedUrl: String? = null,
+        expectedHistoryIndex: Int? = null,
         action: WebView.() -> Unit
     ): BrowserPageState {
         val deferred = onMain {
@@ -494,6 +494,7 @@ private class WebViewBrowserSession(
             CompletableDeferred<BrowserPageState>().also {
                 runtime.pendingNavigation = it
                 runtime.pendingExpectedUrl = expectedUrl
+                runtime.pendingHistoryIndex = expectedHistoryIndex
                 updateTabState(runtime.tabId, loading = true, progress = 0, lastError = null)
                 runtime.webView.action()
             }
@@ -510,6 +511,7 @@ private class WebViewBrowserSession(
                 if (runtime.pendingNavigation === deferred) {
                     runtime.pendingNavigation = null
                     runtime.pendingExpectedUrl = null
+                    runtime.pendingHistoryIndex = null
                 }
             }
         }
@@ -674,6 +676,16 @@ private class WebViewBrowserSession(
             val runtime = runtimes[tabId] ?: return
             val expected = runtime.pendingExpectedUrl
             if (expected == null || expected == url) {
+                if (url != null) {
+                    val requestedIndex = runtime.pendingHistoryIndex
+                    if (requestedIndex != null && runtime.visitedUrls.getOrNull(requestedIndex) == url) {
+                        runtime.historyIndex = requestedIndex
+                    } else if (runtime.visitedUrls.getOrNull(runtime.historyIndex) != url) {
+                        while (runtime.visitedUrls.lastIndex > runtime.historyIndex) runtime.visitedUrls.removeLast()
+                        runtime.visitedUrls += url
+                        runtime.historyIndex = runtime.visitedUrls.lastIndex
+                    }
+                }
                 runtime.pendingNavigation?.complete(runtime.pageState)
             }
         }
