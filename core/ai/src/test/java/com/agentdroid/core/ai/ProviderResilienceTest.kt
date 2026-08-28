@@ -88,7 +88,7 @@ class ProviderResilienceTest {
                     .build()
             }.build()
 
-            val job = launch { factory(HttpTransport(client)).collect() }
+            val job = launch(Dispatchers.IO) { factory(HttpTransport(client)).collect() }
             val enteredRead = withContext(Dispatchers.IO) { body.awaitRead(2, TimeUnit.SECONDS) }
             assertTrue("$kind stream never entered its response body", enteredRead)
 
