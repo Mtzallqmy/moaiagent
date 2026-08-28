@@ -5,13 +5,18 @@ import com.agentdroid.integration.AppMcpController
 import com.agentdroid.integration.AppRuntimePackController
 import com.agentdroid.integration.EmbeddedNodeRuntime
 import com.agentdroid.integration.EmbeddedPythonRuntime
+import com.agentdroid.integration.RootCapability
+import com.agentdroid.integration.ShizukuCapability
 import com.agentdroid.integration.createNodeRuntimeTools
+import com.agentdroid.integration.createPrivilegedRuntimeTools
 import com.agentdroid.integration.createPythonRuntimeTools
 
 class AgentDroidApplication : Application() {
     val container: AppContainer by lazy { AppContainer(this) }
     val pythonRuntime: EmbeddedPythonRuntime by lazy { EmbeddedPythonRuntime(this, container::workspaceRoot) }
     val nodeRuntime: EmbeddedNodeRuntime by lazy { EmbeddedNodeRuntime(this, container::workspaceRoot) }
+    val shizukuCapability: ShizukuCapability by lazy { ShizukuCapability(this) }
+    val rootCapability: RootCapability by lazy { RootCapability() }
     val mcpController: AppMcpController by lazy { AppMcpController(this, container) }
     val runtimePacks: AppRuntimePackController by lazy { AppRuntimePackController(this, container, pythonRuntime, nodeRuntime) }
 
@@ -19,5 +24,6 @@ class AgentDroidApplication : Application() {
         super.onCreate()
         container.toolRegistry.registerAll(createPythonRuntimeTools(pythonRuntime))
         container.toolRegistry.registerAll(createNodeRuntimeTools(nodeRuntime))
+        container.toolRegistry.registerAll(createPrivilegedRuntimeTools(shizukuCapability, rootCapability))
     }
 }

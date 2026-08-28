@@ -17,23 +17,20 @@ val prepareNodeRuntime by tasks.registering {
         nodeCacheDir.mkdirs()
         if (!nodeArchive.exists()) {
             val connection = URI(nodeArchiveUrl).toURL().openConnection().apply {
-                connectTimeout = 30_000
-                readTimeout = 120_000
-                setRequestProperty("User-Agent", "AgentDroid-build")
+                connectTimeout = 30_000; readTimeout = 120_000; setRequestProperty("User-Agent", "AgentDroid-build")
             }
             connection.getInputStream().use { input -> nodeArchive.outputStream().buffered().use { output -> input.copyTo(output) } }
         }
-        val actual = MessageDigest.getInstance("SHA-256").digest(nodeArchive.readBytes()).joinToString("") { "%02x".format(it) }
-        if (actual != nodeArchiveSha256) {
-            nodeArchive.delete()
-            throw GradleException("Node.js Mobile archive SHA-256 mismatch: $actual")
+        val digest = MessageDigest.getInstance("SHA-256")
+        nodeArchive.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
         }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        if (actual != nodeArchiveSha256) { nodeArchive.delete(); throw GradleException("Node.js Mobile archive SHA-256 mismatch: $actual") }
         val outputRoot = nodeJniDir.get().asFile.apply { deleteRecursively(); mkdirs() }
         ZipFile(nodeArchive).use { zip ->
-            mapOf(
-                "arm64-v8a" to "bin/arm64-v8a/libnode.so",
-                "x86_64" to "bin/x86_64/libnode.so"
-            ).forEach { (abi, path) ->
+            mapOf("arm64-v8a" to "bin/arm64-v8a/libnode.so", "x86_64" to "bin/x86_64/libnode.so").forEach { (abi, path) ->
                 val entry = zip.getEntry(path) ?: throw GradleException("Missing Node.js Mobile entry $path")
                 val target = File(outputRoot, "$abi/libnode.so").apply { parentFile.mkdirs() }
                 zip.getInputStream(entry).use { input -> target.outputStream().buffered().use { output -> input.copyTo(output) } }
@@ -55,10 +52,7 @@ android { namespace = "com.agentdroid"; compileSdk = 35
     buildTypes { debug { applicationIdSuffix = ".debug" }; release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") } }
     buildFeatures { compose = true; buildConfig = true }
     sourceSets.getByName("main").jniLibs.srcDir(nodeJniDir)
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        jniLibs.useLegacyPackaging = true
-    }
+    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"; jniLibs.useLegacyPackaging = true }
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
 
@@ -68,6 +62,8 @@ chaquopy { defaultConfig { version = "3.13" } }
 
 dependencies {
     implementation(project(":core:model")); implementation(project(":core:ai")); implementation(project(":core:agent")); implementation(project(":core:permissions")); implementation(project(":core:workspace")); implementation(project(":core:runtime")); implementation(project(":core:terminal")); implementation(project(":core:git")); implementation(project(":core:browser")); implementation(project(":core:phone")); implementation(project(":core:tasks")); implementation(project(":core:research")); implementation(project(":core:artifacts")); implementation(project(":core:subagents")); implementation(project(":core:localai")); implementation(project(":core:mcp")); implementation(project(":data:database"))
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation(platform(libs.androidx.compose.bom)); implementation(libs.androidx.compose.ui); implementation(libs.androidx.compose.ui.tooling.preview); debugImplementation(libs.androidx.compose.ui.tooling); debugImplementation("androidx.compose.ui:ui-test-manifest"); implementation(libs.androidx.compose.material3); implementation(libs.androidx.compose.icons)
     implementation(libs.androidx.activity.compose); implementation(libs.androidx.core.ktx); implementation(libs.androidx.lifecycle.runtime); implementation(libs.androidx.lifecycle.viewmodel); implementation(libs.androidx.navigation.compose); implementation(libs.appcompat); implementation(libs.material); implementation(libs.androidx.room.runtime); implementation(libs.androidx.room.ktx); implementation(libs.dataStore.preferences); implementation(libs.commonmark); implementation(libs.commonmark.tables); implementation(libs.kotlinx.coroutines); implementation(libs.serialization.json)
     implementation("androidx.work:work-runtime:2.11.2")
