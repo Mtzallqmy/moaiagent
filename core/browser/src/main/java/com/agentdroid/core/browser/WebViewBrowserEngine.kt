@@ -382,9 +382,9 @@ private class WebViewBrowserSession(
         awaitPageIdle(runtime)
         val targetIndex = runtime.historyIndex - 1
         val expectedUrl = runtime.visitedUrls.getOrNull(targetIndex) ?: return runtime.pageState
-        return navigateAndAwait(runtime, expectedUrl, targetIndex) {
-            if (canGoBack()) goBack() else loadUrl(expectedUrl)
-        }
+        // WebView's native history index can lag behind on older API levels after a
+        // JavaScript-triggered link. Load the session's validated target deterministically.
+        return navigateAndAwait(runtime, expectedUrl, targetIndex) { loadUrl(expectedUrl) }
     }
 
     override suspend fun goForward(): BrowserPageState {
@@ -392,9 +392,7 @@ private class WebViewBrowserSession(
         awaitPageIdle(runtime)
         val targetIndex = runtime.historyIndex + 1
         val expectedUrl = runtime.visitedUrls.getOrNull(targetIndex) ?: return runtime.pageState
-        return navigateAndAwait(runtime, expectedUrl, targetIndex) {
-            if (canGoForward()) goForward() else loadUrl(expectedUrl)
-        }
+        return navigateAndAwait(runtime, expectedUrl, targetIndex) { loadUrl(expectedUrl) }
     }
 
     override suspend fun reloadPage(): BrowserPageState {
@@ -564,12 +562,15 @@ private class WebViewBrowserSession(
     }
 
     private suspend fun snapshot(): BrowserPageState = onMain { snapshotNow() }
-    private fun snapshotNow() = _state.value.copy(
-        title = webView.title ?: activeRuntime().pageState.title,
-        currentUrl = webView.url ?: activeRuntime().pageState.currentUrl,
-        canGoBack = webView.canGoBack(),
-        canGoForward = webView.canGoForward()
-    )
+    private fun snapshotNow(): BrowserPageState {
+        val runtime = activeRuntime()
+        return _state.value.copy(
+            title = webView.title ?: runtime.pageState.title,
+            currentUrl = webView.url ?: runtime.pageState.currentUrl,
+            canGoBack = runtime.historyIndex > 0,
+            canGoForward = runtime.historyIndex in 0 until runtime.visitedUrls.lastIndex
+        )
+    }
 
     private fun updateState(
         title: String = webView.title ?: _state.value.title,
@@ -594,8 +595,8 @@ private class WebViewBrowserSession(
             currentUrl = currentUrl,
             loading = loading,
             progress = progress,
-            canGoBack = runtime.webView.canGoBack(),
-            canGoForward = runtime.webView.canGoForward(),
+            canGoBack = runtime.historyIndex > 0,
+            canGoForward = runtime.historyIndex in 0 until runtime.visitedUrls.lastIndex,
             lastError = lastError
         )
         runtime.lastUsedAt = System.currentTimeMillis()
@@ -672,7 +673,6 @@ private class WebViewBrowserSession(
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
-            updateTabState(tabId, currentUrl = url, loading = false, progress = 100)
             val runtime = runtimes[tabId] ?: return
             val expected = runtime.pendingExpectedUrl
             if (expected == null || expected == url) {
@@ -686,6 +686,7 @@ private class WebViewBrowserSession(
                         runtime.historyIndex = runtime.visitedUrls.lastIndex
                     }
                 }
+                updateTabState(tabId, currentUrl = url, loading = false, progress = 100)
                 runtime.pendingNavigation?.complete(runtime.pageState)
             }
         }
