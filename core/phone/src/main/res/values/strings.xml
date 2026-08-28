@@ -1,0 +1,10 @@
+<resources>
+    <string name="agent_capsule_ready">AgentDroid • Ready</string>
+    <string name="agent_capsule_running">AgentDroid • Running</string>
+    <string name="agent_capsule_paused">AgentDroid • Paused</string>
+    <string name="agent_capsule_stopping">AgentDroid • Stopping</string>
+    <string name="agent_capsule_pause">Pause</string>
+    <string name="agent_capsule_resume">Resume</string>
+    <string name="agent_capsule_stop">Stop</string>
+    <string name="agent_capsule_take_over">Take over</string>
+</resources>
