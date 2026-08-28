@@ -1,0 +1,30 @@
+<resources>
+    <string name="automations">Automations</string>
+    <string name="automation_new">New automation</string>
+    <string name="automation_goal">Goal</string>
+    <string name="automation_workspace">Workspace</string>
+    <string name="automation_conversation">Conversation</string>
+    <string name="automation_repeat_minutes">Repeat every minutes (blank = once)</string>
+    <string name="automation_initial_delay">Initial delay minutes</string>
+    <string name="automation_network">Require network</string>
+    <string name="automation_charging">Require charging</string>
+    <string name="automation_schedule">Schedule</string>
+    <string name="automation_cancel">Cancel schedule</string>
+    <string name="automation_once">Once</string>
+    <string name="automation_every">Every %1$d min</string>
+    <string name="automation_empty">No scheduled automations.</string>
+    <string name="automation_android_note">Android may delay scheduled work because of Doze and scheduler quotas. Scheduled work creates a durable Agent task and keeps permission checks intact.</string>
+    <string name="backup_export">Export backup</string>
+    <string name="backup_import">Import backup</string>
+    <string name="backup_title">Backup &amp; restore</string>
+    <string name="backup_safe_note">API keys, secure-store values, provider secret aliases, custom credential headers and MCP credentials are never exported.</string>
+    <string name="backup_exported">Backup exported: %1$d workspaces, %2$d conversations, %3$d files.</string>
+    <string name="backup_imported">Backup imported: %1$d workspaces, %2$d conversations, %3$d files.</string>
+    <string name="backup_failed">Backup operation failed: %1$s</string>
+    <string name="usage">Usage</string>
+    <string name="usage_prompt_tokens">Prompt tokens</string>
+    <string name="usage_completion_tokens">Completion tokens</string>
+    <string name="usage_total_tokens">Total tokens</string>
+    <string name="usage_messages">Measured messages</string>
+    <string name="phone_security">Phone &amp; Security</string>
+</resources>
