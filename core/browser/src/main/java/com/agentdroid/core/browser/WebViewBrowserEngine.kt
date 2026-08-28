@@ -94,6 +94,7 @@ private class WebViewBrowserSession(
         val webView: WebView,
         var pageState: BrowserPageState,
         var pendingNavigation: CompletableDeferred<BrowserPageState>? = null,
+        var pendingExpectedUrl: String? = null,
         var cachedElements: List<BrowserElement> = emptyList(),
         var lastUsedAt: Long = System.currentTimeMillis(),
         var needsReload: Boolean = false
@@ -376,15 +377,25 @@ private class WebViewBrowserSession(
     override suspend fun goBack(): BrowserPageState {
         val runtime = operationMutex.withLock { ensureOpen(); activeRuntime() }
         awaitPageIdle(runtime)
-        if (!onMain { runtime.webView.canGoBack() }) return runtime.pageState
-        return navigateAndAwait(runtime) { goBack() }
+        val expectedUrl = onMain {
+            if (!runtime.webView.canGoBack()) return@onMain null
+            runtime.webView.copyBackForwardList().let { history ->
+                history.getItemAtIndex(history.currentIndex - 1)?.url
+            }
+        } ?: return runtime.pageState
+        return navigateAndAwait(runtime, expectedUrl) { goBack() }
     }
 
     override suspend fun goForward(): BrowserPageState {
         val runtime = operationMutex.withLock { ensureOpen(); activeRuntime() }
         awaitPageIdle(runtime)
-        if (!onMain { runtime.webView.canGoForward() }) return runtime.pageState
-        return navigateAndAwait(runtime) { goForward() }
+        val expectedUrl = onMain {
+            if (!runtime.webView.canGoForward()) return@onMain null
+            runtime.webView.copyBackForwardList().let { history ->
+                history.getItemAtIndex(history.currentIndex + 1)?.url
+            }
+        } ?: return runtime.pageState
+        return navigateAndAwait(runtime, expectedUrl) { goForward() }
     }
 
     override suspend fun reloadPage(): BrowserPageState {
@@ -471,13 +482,18 @@ private class WebViewBrowserSession(
         runtimes.clear()
     }
 
-    private suspend fun navigateAndAwait(runtime: TabRuntime, action: WebView.() -> Unit): BrowserPageState {
+    private suspend fun navigateAndAwait(
+        runtime: TabRuntime,
+        expectedUrl: String? = null,
+        action: WebView.() -> Unit
+    ): BrowserPageState {
         val deferred = onMain {
             ensureOpen()
             runtime.cachedElements = emptyList()
             runtime.pendingNavigation?.cancel()
             CompletableDeferred<BrowserPageState>().also {
                 runtime.pendingNavigation = it
+                runtime.pendingExpectedUrl = expectedUrl
                 updateTabState(runtime.tabId, loading = true, progress = 0, lastError = null)
                 runtime.webView.action()
             }
@@ -490,7 +506,12 @@ private class WebViewBrowserSession(
             if (failure is BrowserException) throw failure
             throw BrowserException(BrowserError.Navigation(failure.message ?: "Navigation timed out", runtime.pageState.currentUrl.orEmpty()))
         } finally {
-            onMain { if (runtime.pendingNavigation === deferred) runtime.pendingNavigation = null }
+            onMain {
+                if (runtime.pendingNavigation === deferred) {
+                    runtime.pendingNavigation = null
+                    runtime.pendingExpectedUrl = null
+                }
+            }
         }
     }
 
@@ -650,7 +671,11 @@ private class WebViewBrowserSession(
 
         override fun onPageFinished(view: WebView, url: String?) {
             updateTabState(tabId, currentUrl = url, loading = false, progress = 100)
-            runtimes[tabId]?.pendingNavigation?.complete(runtimes[tabId]?.pageState ?: return)
+            val runtime = runtimes[tabId] ?: return
+            val expected = runtime.pendingExpectedUrl
+            if (expected == null || expected == url) {
+                runtime.pendingNavigation?.complete(runtime.pageState)
+            }
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
