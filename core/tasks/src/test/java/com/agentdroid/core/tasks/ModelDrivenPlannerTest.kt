@@ -57,6 +57,23 @@ class ModelDrivenPlannerTest {
         assertEquals(listOf("inspect", "implement"), result.structuredPlan.steps.map { it.id })
     }
 
+    @Test fun `malformed JSON is repaired before use`(): Unit = runBlocking {
+        val malformed = """{"summary":"broken","steps":[{"id":"one","title":"Broken""" 
+        val client = QueueClient(mutableListOf(
+            Result.success(AgentModelResponse(malformed)),
+            Result.success(AgentModelResponse(VALID_BUILD))
+        ))
+
+        val result = planner(client).create(
+            PlannerInput("Implement a feature", currentCapabilities = listOf("workspace.write")),
+            now = 31L
+        )
+
+        assertEquals(PlannerSource.REPAIRED_MODEL, result.source)
+        assertEquals(2, client.requests.size)
+        assertEquals(listOf("inspect", "implement"), result.structuredPlan.steps.map { it.id })
+    }
+
     @Test fun `unknown capability is rejected and repaired`(): Unit = runBlocking {
         val invalid = """{"summary":"x","steps":[{"id":"one","title":"Do it","goal":"Do it","dependencies":[],"expectedCapabilities":["runtime.root"],"acceptanceCriteria":["done"]}]}"""
         val client = QueueClient(mutableListOf(
