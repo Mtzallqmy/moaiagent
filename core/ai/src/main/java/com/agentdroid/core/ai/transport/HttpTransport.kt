@@ -2,6 +2,7 @@ package com.agentdroid.core.ai.transport
 
 import com.agentdroid.core.ai.ErrorMapper
 import com.agentdroid.core.model.AppError
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -21,18 +22,26 @@ class HttpTransport(
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 ) {
-    suspend fun execute(request: Request): Response = suspendCancellableCoroutine { continuation ->
-        val call = client.newCall(request)
-        continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                if (continuation.isCancelled) return
-                continuation.resumeWithException(e)
-            }
-            override fun onResponse(call: Call, response: Response) {
-                if (continuation.isCancelled) response.close() else continuation.resume(response)
-            }
-        })
+    suspend fun execute(request: Request): Response {
+        val job = currentCoroutineContext()[kotlinx.coroutines.Job]
+        return suspendCancellableCoroutine { continuation ->
+            val call = client.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isCancelled) return
+                    continuation.resumeWithException(e)
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    if (continuation.isCancelled) {
+                        response.close()
+                        return
+                    }
+                    job?.invokeOnCompletion { response.close() }
+                    continuation.resume(response)
+                }
+            })
+        }
     }
 
     fun request(
