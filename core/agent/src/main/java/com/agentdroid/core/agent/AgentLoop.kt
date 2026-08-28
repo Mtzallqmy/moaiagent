@@ -1,6 +1,7 @@
 package com.agentdroid.core.agent
 
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withTimeout
@@ -20,6 +21,7 @@ class AgentLoop(
 ) {
     fun run(session: AgentSession, userRequest: String, model: AgentModelClient): Flow<AgentEvent> = flow {
         var state = AgentState(session = session)
+        AgentRuntimeControl.begin(session.id, currentCoroutineContext()[kotlinx.coroutines.Job])
         emit(AgentEvent.StateChanged(state))
         if (session.mode != AgentMode.CHAT && !model.supportsToolCalling) {
             val error = AgentError.provider("Provider does not support tool calling; ${session.mode} mode is unavailable")
@@ -36,6 +38,7 @@ class AgentLoop(
                 var finalText = ""
 
                 for (turnIndex in 1..config.maxTurns) {
+                    AgentRuntimeControl.checkpoint()
                     state = state.copy(turn = turnIndex, toolCalls = totalToolCalls, consecutiveFailures = consecutiveFailures)
                     emit(AgentEvent.StateChanged(state))
                     emit(AgentEvent.Timeline(AgentStep("Analyzing request", AgentStepStatus.RUNNING)))
@@ -51,10 +54,12 @@ class AgentLoop(
                             is AgentModelEvent.ToolCallCompleted -> emit(AgentEvent.ToolCallCompleted(event.call))
                         }
                     }.getOrElse { failure ->
+                        if (failure is kotlinx.coroutines.CancellationException) throw failure
                         val error = AgentError.provider(failure.message ?: failure::class.java.simpleName)
                         emit(AgentEvent.Failed(error)); emit(AgentEvent.Done); return@withTimeout
                     }
                     finalText = response.text
+                    AgentRuntimeControl.checkpoint()
 
                     if (response.toolCalls.isEmpty()) {
                         if (response.text.isNotBlank()) transcript += AgentMessage(AgentMessageRole.ASSISTANT, response.text)
@@ -70,6 +75,7 @@ class AgentLoop(
 
                     transcript += AgentMessage(AgentMessageRole.ASSISTANT, response.text, toolCalls = response.toolCalls)
                     for (call in response.toolCalls) {
+                        AgentRuntimeControl.checkpoint()
                         if (totalToolCalls >= config.maxToolCalls) {
                             val error = AgentError(AgentErrorCode.AGENT_TOOL_CALL_LIMIT_REACHED, "Agent exceeded ${config.maxToolCalls} tool calls", "The agent reached its tool-call limit.", false)
                             emit(AgentEvent.Failed(error)); emit(AgentEvent.Done); return@withTimeout
@@ -135,6 +141,7 @@ class AgentLoop(
                             emit(AgentEvent.Timeline(AgentStep("Waiting for approval: ${effectiveDefinition.name}", AgentStepStatus.WAITING_PERMISSION, call.id)))
                             emit(AgentEvent.PermissionRequired(permissionRequest))
                         }
+                        AgentRuntimeControl.checkpoint()
                         val permission = permissionGateway.authorize(permissionRequest)
                         if (permission.decision != PermissionDecision.ALLOW) {
                             val result = ToolResult.failure(AgentError.permissionDenied(call.name))
@@ -149,6 +156,7 @@ class AgentLoop(
                             continue
                         }
 
+                        AgentRuntimeControl.checkpoint()
                         val started = System.nanoTime()
                         val result = toolRegistry.execute(call, toolContext)
                         val durationMs = (System.nanoTime() - started) / 1_000_000
@@ -176,6 +184,7 @@ class AgentLoop(
             emit(AgentEvent.Failed(error)); emit(AgentEvent.Done)
         } finally {
             permissionGateway.clearSession(session.id)
+            AgentRuntimeControl.finish(session.id)
         }
     }
 
