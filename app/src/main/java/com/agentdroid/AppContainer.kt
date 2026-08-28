@@ -12,6 +12,14 @@ import com.agentdroid.core.ai.providers.GeminiProvider
 import com.agentdroid.core.ai.providers.OpenAiProvider
 import com.agentdroid.core.ai.providers.OpenRouterProvider
 import com.agentdroid.core.agent.ToolRegistry
+import com.agentdroid.core.artifacts.ArtifactServices
+import com.agentdroid.core.artifacts.ArtifactWorkspaceProvider
+import com.agentdroid.core.artifacts.CitationSourceCatalog
+import com.agentdroid.core.artifacts.CitationValidator
+import com.agentdroid.core.artifacts.FileArtifactRepository
+import com.agentdroid.core.artifacts.createArtifactTools
+import com.agentdroid.core.browser.WebViewBrowserEngine
+import com.agentdroid.core.browser.createBrowserAgentTools
 import com.agentdroid.core.git.GitServices
 import com.agentdroid.core.git.JGitEngine
 import com.agentdroid.core.git.createGitTools
@@ -25,6 +33,10 @@ import com.agentdroid.core.runtime.RuntimeDiscovery
 import com.agentdroid.core.runtime.RuntimeLimits
 import com.agentdroid.core.runtime.RuntimeServices
 import com.agentdroid.core.runtime.createRuntimeTools
+import com.agentdroid.core.research.DefaultResearchEngine
+import com.agentdroid.core.research.DuckDuckGoInstantAnswerProvider
+import com.agentdroid.core.research.OkHttpResearchSourceFetcher
+import com.agentdroid.core.research.createResearchAgentTools
 import com.agentdroid.core.terminal.TerminalClipboard
 import com.agentdroid.core.terminal.TermuxTerminalManager
 import com.agentdroid.core.workspace.ChangeSetManager
@@ -32,6 +44,11 @@ import com.agentdroid.core.workspace.DiffEngine
 import com.agentdroid.core.workspace.WorkspaceFileSystem
 import com.agentdroid.core.workspace.WorkspaceServices
 import com.agentdroid.core.workspace.createWorkspaceToolRegistry
+import com.agentdroid.core.tasks.ConciseTaskPlanner
+import com.agentdroid.core.tasks.InMemoryTaskRepository
+import com.agentdroid.core.tasks.TaskEngine
+import com.agentdroid.core.tasks.TaskIdGenerator
+import com.agentdroid.core.tasks.createTaskTools
 import com.agentdroid.data.database.AgentDatabase
 import com.agentdroid.data.database.AuditRepository
 import com.agentdroid.data.database.DatabaseMigrations
@@ -39,20 +56,37 @@ import com.agentdroid.data.database.RoomAuditSink
 import com.agentdroid.data.database.RoomChangeSetStore
 import com.agentdroid.data.database.RoomConversationRepository
 import com.agentdroid.data.database.RoomMemoryRepository
+import com.agentdroid.data.database.RoomArtifactMetadataStore
+import com.agentdroid.data.database.RoomBrowserMetadataStore
 import com.agentdroid.data.database.RoomMessageRepository
 import com.agentdroid.data.database.RoomPermissionRuleStore
 import com.agentdroid.data.database.RoomProcessMetadataStore
 import com.agentdroid.data.database.RoomProviderRepository
+import com.agentdroid.data.database.RoomResearchSessionRepository
 import com.agentdroid.data.database.RoomSkillRepository
+import com.agentdroid.data.database.RoomTaskPersistence
+import com.agentdroid.data.database.RoomSubagentDelegationEventStore
+import com.agentdroid.data.database.Phase4RecoveryCoordinator
 import com.agentdroid.data.database.RoomTerminalSessionMetadataStore
 import com.agentdroid.data.database.RoomWorkspaceRepository
 import com.agentdroid.security.SecureSecretStore
 import com.agentdroid.settings.SettingsRepository
+import com.agentdroid.integration.ArtifactBrowserScreenshotSink
+import com.agentdroid.integration.PersistedArtifactRepository
+import com.agentdroid.integration.PersistedBrowserSessionService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.File
+import java.net.URI
+import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val database: AgentDatabase = Room.databaseBuilder(appContext, AgentDatabase::class.java, "agentdroid.db")
         .addMigrations(*DatabaseMigrations.ALL)
         .build()
@@ -81,6 +115,37 @@ class AppContainer(context: Context) {
     val commandPolicy = CommandPolicy()
     val gitEngine = JGitEngine()
     val terminalMetadataStore = RoomTerminalSessionMetadataStore(database.terminalSessions())
+
+    private val taskIds = TaskIdGenerator { UUID.randomUUID().toString() }
+    val taskPersistence = RoomTaskPersistence(database)
+    val taskRepository = InMemoryTaskRepository(ids = taskIds, persistence = taskPersistence)
+    val taskEngine = TaskEngine(taskRepository, ConciseTaskPlanner(taskIds))
+    val subagentEvents = RoomSubagentDelegationEventStore(database.subagentEvents())
+
+    val researchSessions = RoomResearchSessionRepository(database)
+    val researchEngine = DefaultResearchEngine(
+        searchProvider = DuckDuckGoInstantAnswerProvider(),
+        sourceFetcher = OkHttpResearchSourceFetcher(),
+        repository = researchSessions
+    )
+
+    private val citationValidator = CitationValidator(CitationSourceCatalog { sessionId, sourceId, canonicalUrl ->
+        researchSessions.get(sessionId)?.sources?.any { source ->
+            source.id == sourceId && canonicalResearchUrl(source.url) == canonicalResearchUrl(canonicalUrl)
+        } == true
+    })
+    private val artifactFiles = FileArtifactRepository(
+        ArtifactWorkspaceProvider(::workspaceRoot),
+        citationValidator
+    )
+    val artifactRepository = PersistedArtifactRepository(
+        artifactFiles,
+        RoomArtifactMetadataStore(database.artifacts())
+    )
+    private val browserScreenshotSink = ArtifactBrowserScreenshotSink(::workspaceRoot, artifactRepository)
+    val browserEngine = WebViewBrowserEngine(appContext, screenshotSink = browserScreenshotSink)
+    val browserMetadata = RoomBrowserMetadataStore(database)
+    val browserSessions = PersistedBrowserSessionService(browserEngine, browserMetadata, applicationScope)
 
     private val fileSystems = ConcurrentHashMap<String, WorkspaceFileSystem>()
     private val changeManagers = ConcurrentHashMap<String, ChangeSetManager>()
@@ -117,6 +182,17 @@ class AppContainer(context: Context) {
     val toolRegistry: ToolRegistry = createWorkspaceToolRegistry(workspaceServices, diffEngine).also { registry ->
         registry.registerAll(createRuntimeTools(runtimeServices))
         registry.registerAll(createGitTools(gitServices))
+        registry.registerAll(createBrowserAgentTools(browserSessions))
+        registry.registerAll(createTaskTools(taskEngine))
+        registry.registerAll(createResearchAgentTools(researchEngine))
+        registry.registerAll(createArtifactTools(ArtifactServices { artifactRepository }))
+    }
+
+    init {
+        applicationScope.launch {
+            Phase4RecoveryCoordinator(taskPersistence, subagentEvents).recover()
+            taskEngine.restore()
+        }
     }
 
     fun workspaceRoot(workspaceId: String): File {
@@ -140,4 +216,12 @@ class AppContainer(context: Context) {
         val root = workspaceRoot(workspaceId)
         return !root.exists() || root.deleteRecursively()
     }
+
+    private fun canonicalResearchUrl(raw: String): String = runCatching {
+        val uri = URI(raw.trim()).normalize()
+        URI(
+            uri.scheme?.lowercase(Locale.ROOT), null, uri.host?.lowercase(Locale.ROOT),
+            uri.port, uri.path, uri.query, null
+        ).toASCIIString()
+    }.getOrDefault(raw.trim())
 }

@@ -87,6 +87,16 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
                 arguments = listOf(navArgument("workspaceId") { type = NavType.StringType }, navArgument("cwd") { type = NavType.StringType; defaultValue = "." })
             ) { entry -> TerminalScreen(nav, entry.arguments?.getString("workspaceId").orEmpty(), entry.arguments?.getString("cwd") ?: ".") }
             composable("git/{workspaceId}", arguments = listOf(navArgument("workspaceId") { type = NavType.StringType })) { entry -> GitWorkspaceScreen(nav, entry.arguments?.getString("workspaceId").orEmpty()) }
+            composable(
+                "browser/{workspaceId}/{conversationId}",
+                arguments = listOf(navArgument("workspaceId") { type = NavType.StringType }, navArgument("conversationId") { type = NavType.StringType })
+            ) { entry -> Phase4BrowserRoute(nav, factory, entry.arguments?.getString("workspaceId").orEmpty(), entry.arguments?.getString("conversationId").orEmpty()) }
+            composable("tasks/{workspaceId}", arguments = listOf(navArgument("workspaceId") { type = NavType.StringType })) { entry -> Phase4TasksRoute(nav, factory, entry.arguments?.getString("workspaceId").orEmpty()) }
+            composable(
+                "artifacts/{workspaceId}?artifactId={artifactId}",
+                arguments = listOf(navArgument("workspaceId") { type = NavType.StringType }, navArgument("artifactId") { type = NavType.StringType; nullable = true; defaultValue = null })
+            ) { entry -> Phase4ArtifactsRoute(factory, entry.arguments?.getString("workspaceId").orEmpty(), entry.arguments?.getString("artifactId")) }
+            composable("subagents") { Phase4SubagentRoute(factory) }
             composable("runtime") { RuntimeScreen(nav) }
             composable("permissions") { PermissionRulesScreen(nav, factory) }
             composable("classic") { AgentDroidRoot() }

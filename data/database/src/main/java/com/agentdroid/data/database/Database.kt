@@ -150,9 +150,12 @@ data class TerminalSessionEntity(
     entities = [
         ConversationEntity::class, MessageEntity::class, ProviderConfigEntity::class, WorkspaceEntity::class,
         MemoryEntryEntity::class, SkillEntity::class, AppSettingEntity::class, PermissionRuleEntity::class,
-        AuditLogEntity::class, ChangeSetEntity::class, ProcessMetadataEntity::class, TerminalSessionEntity::class
+        AuditLogEntity::class, ChangeSetEntity::class, ProcessMetadataEntity::class, TerminalSessionEntity::class,
+        TaskEntity::class, TaskStepEntity::class, TaskEventEntity::class, ArtifactEntity::class,
+        ResearchSessionEntity::class, ResearchSourceEntity::class, ResearchFindingEntity::class,
+        BrowserSessionEntity::class, BrowserTabEntity::class, SubagentDelegationEventEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class AgentDatabase : RoomDatabase() {
@@ -168,6 +171,11 @@ abstract class AgentDatabase : RoomDatabase() {
     abstract fun changeSets(): ChangeSetDao
     abstract fun processes(): ProcessMetadataDao
     abstract fun terminalSessions(): TerminalSessionDao
+    abstract fun tasks(): TaskDao
+    abstract fun artifacts(): ArtifactMetadataDao
+    abstract fun research(): ResearchDao
+    abstract fun browserSessions(): BrowserMetadataDao
+    abstract fun subagentEvents(): SubagentDelegationEventDao
 }
 
 object DatabaseMigrations {
@@ -199,5 +207,50 @@ object DatabaseMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS index_terminal_sessions_lastUsedAt ON terminal_sessions(lastUsedAt)")
         }
     }
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS tasks (id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, workspaceId TEXT NOT NULL, conversationId TEXT NOT NULL, planSummary TEXT NOT NULL, planRevision INTEGER NOT NULL, planUpdatedAt INTEGER NOT NULL, status TEXT NOT NULL, waitReason TEXT NOT NULL, progress INTEGER NOT NULL, currentStepId TEXT, artifactRefsJson TEXT NOT NULL, createdAt INTEGER NOT NULL, startedAt INTEGER, updatedAt INTEGER NOT NULL, finishedAt INTEGER, failure TEXT, recoveryRequired INTEGER NOT NULL, revision INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_workspaceId ON tasks(workspaceId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_conversationId ON tasks(conversationId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_status ON tasks(status)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_updatedAt ON tasks(updatedAt)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS task_steps (taskId TEXT NOT NULL, id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, position INTEGER NOT NULL, status TEXT NOT NULL, retryCount INTEGER NOT NULL, maxRetries INTEGER NOT NULL, startedAt INTEGER, finishedAt INTEGER, error TEXT, PRIMARY KEY(taskId, id))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_task_steps_taskId ON task_steps(taskId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_task_steps_status ON task_steps(status)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS task_events (id TEXT NOT NULL PRIMARY KEY, taskId TEXT NOT NULL, type TEXT NOT NULL, timestamp INTEGER NOT NULL, stepId TEXT, message TEXT, taskRevision INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_task_events_taskId ON task_events(taskId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_task_events_timestamp ON task_events(timestamp)")
+
+            db.execSQL("CREATE TABLE IF NOT EXISTS artifacts (id TEXT NOT NULL PRIMARY KEY, taskId TEXT, conversationId TEXT NOT NULL, workspaceId TEXT NOT NULL, type TEXT NOT NULL, title TEXT NOT NULL, filePath TEXT NOT NULL, mimeType TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, sourceReferencesJson TEXT NOT NULL, storage TEXT NOT NULL, sizeBytes INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_artifacts_taskId ON artifacts(taskId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_artifacts_conversationId ON artifacts(conversationId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_artifacts_workspaceId ON artifacts(workspaceId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_artifacts_updatedAt ON artifacts(updatedAt)")
+
+            db.execSQL("CREATE TABLE IF NOT EXISTS research_sessions (id TEXT NOT NULL PRIMARY KEY, query TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, comparison TEXT, reportJson TEXT)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_research_sessions_updatedAt ON research_sessions(updatedAt)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS research_sources (sessionId TEXT NOT NULL, id TEXT NOT NULL, url TEXT NOT NULL, title TEXT NOT NULL, domain TEXT NOT NULL, retrievedAt INTEGER NOT NULL, excerpt TEXT NOT NULL, relevance REAL NOT NULL, PRIMARY KEY(sessionId, id))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_research_sources_sessionId ON research_sources(sessionId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_research_sources_domain ON research_sources(domain)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_research_sources_retrievedAt ON research_sources(retrievedAt)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS research_findings (sessionId TEXT NOT NULL, id TEXT NOT NULL, text TEXT NOT NULL, sourceIdsJson TEXT NOT NULL, relevance REAL NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY(sessionId, id))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_research_findings_sessionId ON research_findings(sessionId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_research_findings_createdAt ON research_findings(createdAt)")
+
+            db.execSQL("CREATE TABLE IF NOT EXISTS browser_sessions (sessionId TEXT NOT NULL PRIMARY KEY, workspaceId TEXT NOT NULL, conversationId TEXT NOT NULL, activeTabId TEXT NOT NULL, currentUrl TEXT, lastUsedAt INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_browser_sessions_workspaceId ON browser_sessions(workspaceId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_browser_sessions_conversationId ON browser_sessions(conversationId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_browser_sessions_lastUsedAt ON browser_sessions(lastUsedAt)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS browser_tabs (sessionId TEXT NOT NULL, tabId TEXT NOT NULL, title TEXT NOT NULL, currentUrl TEXT, lastUsedAt INTEGER NOT NULL, PRIMARY KEY(sessionId, tabId))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_browser_tabs_sessionId ON browser_tabs(sessionId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_browser_tabs_lastUsedAt ON browser_tabs(lastUsedAt)")
+
+            db.execSQL("CREATE TABLE IF NOT EXISTS subagent_delegation_events (id TEXT NOT NULL PRIMARY KEY, subagentId TEXT NOT NULL, taskId TEXT NOT NULL, rootTaskId TEXT, parentSubagentId TEXT, role TEXT NOT NULL, status TEXT NOT NULL, label TEXT NOT NULL, startedAt INTEGER, finishedAt INTEGER, failureSummary TEXT, createdAt INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_subagent_delegation_events_subagentId ON subagent_delegation_events(subagentId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_subagent_delegation_events_taskId ON subagent_delegation_events(taskId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_subagent_delegation_events_rootTaskId ON subagent_delegation_events(rootTaskId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_subagent_delegation_events_createdAt ON subagent_delegation_events(createdAt)")
+        }
+    }
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

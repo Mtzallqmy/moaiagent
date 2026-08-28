@@ -61,12 +61,14 @@ class Phase3UiTest {
     @Test fun gitUiInitializesStagesDiffsAndCommits() {
         openWorkspace()
         composeRule.onNodeWithTag("workspace_open_git").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasTestTag("git_screen")).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithTag("git_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("git_init").performClick()
         composeRule.waitUntil(8_000) { runBlocking { container.gitEngine.isRepository(container.workspaceRoot(workspaceId)) } }
         composeRule.waitUntil(8_000) { composeRule.onAllNodes(hasText("sample.txt")).fetchSemanticsNodes().isNotEmpty() }
 
         composeRule.onNodeWithContentDescription("View diff").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasText("Git diff")).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithText("Git diff").assertIsDisplayed()
         composeRule.onNodeWithText("Close").performClick()
         composeRule.onNodeWithContentDescription("Stage").performClick()

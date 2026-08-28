@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.SmallFloatingActionButton
@@ -32,6 +35,18 @@ fun Phase3WorkspaceBrowserHost(nav: NavHostController, factory: ContainerViewMod
     Box(Modifier.fillMaxSize()) {
         WorkspaceBrowserScreen(nav, factory, workspaceId)
         Column(Modifier.align(Alignment.BottomEnd).padding(18.dp), horizontalAlignment = Alignment.End) {
+            SmallFloatingActionButton(
+                onClick = { nav.navigate("browser/$workspaceId/workspace-$workspaceId") },
+                modifier = Modifier.padding(bottom = 10.dp).testTag("workspace_open_browser")
+            ) { Icon(Icons.Default.Language, stringResource(R.string.phase4_open_browser), Modifier.size(20.dp)) }
+            SmallFloatingActionButton(
+                onClick = { nav.navigate("tasks/$workspaceId") },
+                modifier = Modifier.padding(bottom = 10.dp).testTag("workspace_open_tasks")
+            ) { Icon(Icons.Default.Checklist, stringResource(R.string.phase4_open_tasks), Modifier.size(20.dp)) }
+            SmallFloatingActionButton(
+                onClick = { nav.navigate("artifacts/$workspaceId") },
+                modifier = Modifier.padding(bottom = 10.dp).testTag("workspace_open_artifacts")
+            ) { Icon(Icons.Default.Description, stringResource(R.string.phase4_open_artifacts), Modifier.size(20.dp)) }
             SmallFloatingActionButton(
                 onClick = { nav.navigate("git/$workspaceId") },
                 modifier = Modifier.padding(bottom = 10.dp).testTag("workspace_open_git")

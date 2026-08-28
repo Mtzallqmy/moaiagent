@@ -40,6 +40,7 @@ fun Phase2ChatScreen(nav: NavHostController, factory: ContainerViewModelFactory,
     val selectedProvider by vm.selectedProviderId.collectAsState()
     val selectedModel by vm.selectedModelId.collectAsState()
     val conversation by vm.selectedConversationId.collectAsState()
+    val selectedWorkspace by vm.selectedWorkspaceId.collectAsState()
     val phase by vm.phase.collectAsState()
     val error by vm.error.collectAsState()
     val messages = conversation?.let { vm.messages(it).collectAsState(initial = emptyList()).value }.orEmpty()
@@ -50,7 +51,14 @@ fun Phase2ChatScreen(nav: NavHostController, factory: ContainerViewModelFactory,
     Column(Modifier.fillMaxSize().testTag("phase2_chat")) {
         TopAppBar(
             title = { Text(stringResource(R.string.app_name)) },
-            actions = { IconButton({ vm.newConversation() }) { Icon(Icons.Default.Add, stringResource(R.string.new_conversation)) } }
+            actions = {
+                if (conversation != null && selectedWorkspace != null) {
+                    IconButton({ nav.navigate("browser/$selectedWorkspace/$conversation") }) { Icon(Icons.Default.Language, stringResource(R.string.phase4_open_browser)) }
+                    IconButton({ nav.navigate("tasks/$selectedWorkspace") }) { Icon(Icons.Default.Checklist, stringResource(R.string.phase4_open_tasks)) }
+                }
+                IconButton({ nav.navigate("subagents") }) { Icon(Icons.Default.AccountTree, stringResource(R.string.phase4_open_subagents)) }
+                IconButton({ vm.newConversation() }) { Icon(Icons.Default.Add, stringResource(R.string.new_conversation)) }
+            }
         )
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box {
@@ -238,13 +246,14 @@ fun AgentPermissionDialog(vm: ChatViewModel) {
             }
         },
         confirmButton = {
+            val oneShotOnly = pending.definition.riskLevel == com.agentdroid.core.agent.RiskLevel.SENSITIVE
             Column(horizontalAlignment = Alignment.End) {
                 Row {
                     TextButton({ vm.allowPermission(PermissionScope.ONCE) }, Modifier.testTag("permission_allow_once")) { Text(stringResource(R.string.allow_once)) }
-                    TextButton({ vm.allowPermission(PermissionScope.SESSION) }) { Text(stringResource(R.string.allow_session)) }
+                    if (!oneShotOnly) TextButton({ vm.allowPermission(PermissionScope.SESSION) }) { Text(stringResource(R.string.allow_session)) }
                 }
                 Row {
-                    TextButton({ vm.allowPermission(PermissionScope.ALWAYS) }) { Text(stringResource(R.string.always_allow)) }
+                    if (!oneShotOnly) TextButton({ vm.allowPermission(PermissionScope.ALWAYS) }) { Text(stringResource(R.string.always_allow)) }
                     TextButton(vm::denyPermission, Modifier.testTag("permission_deny")) { Text(stringResource(R.string.deny)) }
                 }
             }

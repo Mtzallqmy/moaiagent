@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-This file records components directly introduced in AgentDroid Phases 2–3. Existing Android/Kotlin dependencies retain their upstream license terms.
+This file records notable components directly used through AgentDroid Phase 4. Existing Android/Kotlin/AndroidX dependencies retain their upstream license terms.
 
 ## java-diff-utils 4.17
 
@@ -27,6 +27,23 @@ AgentDroid does not bundle the GPL Termux application or `termux-shared` as part
 
 JGit core may bring transitive dependencies including JavaEWAH (Apache-2.0) and SLF4J API (MIT); those remain subject to their own upstream notices and licenses.
 
+## OkHttp and MockWebServer
+
+- Packages: `com.squareup.okhttp3:okhttp` and test-only `com.squareup.okhttp3:mockwebserver` (versions managed by the repository catalog)
+- Upstream: `square/okhttp`
+- License: Apache License 2.0
+- Phase 4 purpose: bounded HTTP transport for the pluggable research provider and selected-source fetcher; deterministic local HTTP tests.
+
+## Android System WebView
+
+- Provider: Android system component, based on Chromium.
+- License: BSD-style Chromium license plus licenses of Chromium third-party components, as distributed by the device/system WebView provider.
+- Phase 4 purpose: browser rendering. AgentDroid calls the platform API and does not redistribute a Chromium/WebView binary in the application package.
+
+## DuckDuckGo Instant Answer API
+
+AgentDroid contains an optional client for the public DuckDuckGo Instant Answer API behind the `WebSearchProvider` abstraction. No DuckDuckGo software is bundled or copied. Service access is governed by the provider's applicable terms and policy.
+
 ## General notice
 
-Copyright and license notices remain the property of their upstream authors. Apache-2.0 and BSD-3-Clause/EDL components are distributed subject to their respective preservation and disclaimer requirements. Architecture-only references such as OpenCode, Hermes Agent, and libgit2 are documented in `docs/OPEN_SOURCE_COMPONENTS.md` and are not linked Phase 3 components.
+Copyright and license notices remain the property of their upstream authors. Apache-2.0 and BSD-3-Clause/EDL components are distributed subject to their respective preservation and disclaimer requirements. Architecture-only references such as OpenCode, Hermes Agent, and libgit2 are documented in `docs/OPEN_SOURCE_COMPONENTS.md` and are not linked components.

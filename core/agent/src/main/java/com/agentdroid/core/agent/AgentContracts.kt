@@ -23,6 +23,7 @@ enum class RiskLevel { SAFE, MODIFY, DESTRUCTIVE, EXTERNAL, SENSITIVE }
 enum class ToolCategory {
     FILE_READ, FILE_SEARCH, FILE_MODIFY, FILE_DESTRUCTIVE, WORKSPACE,
     SHELL, PROCESS, GIT_READ, GIT_MODIFY, GIT_DESTRUCTIVE, RUNTIME,
+    BROWSER_READ, BROWSER_MODIFY, BROWSER_EXTERNAL, RESEARCH, TASK, ARTIFACT, SUBAGENT,
     EXTERNAL, SENSITIVE
 }
 
@@ -90,6 +91,17 @@ enum class AgentErrorCode {
     GIT_NOT_REPOSITORY,
     GIT_CONFLICT,
     GIT_ERROR,
+    BROWSER_NAVIGATION_ERROR,
+    ELEMENT_NOT_FOUND,
+    ELEMENT_NOT_INTERACTABLE,
+    UNSAFE_URL,
+    FORM_SUBMISSION_DENIED,
+    RESEARCH_SOURCE_UNAVAILABLE,
+    TASK_CANCELLED,
+    TASK_STEP_FAILED,
+    ARTIFACT_WRITE_ERROR,
+    SUBAGENT_LIMIT_REACHED,
+    DELEGATION_DEPTH_EXCEEDED,
     AGENT_TURN_LIMIT_REACHED,
     AGENT_TOOL_CALL_LIMIT_REACHED,
     AGENT_TIMEOUT,
@@ -423,7 +435,13 @@ data class ContextSnapshot(
     val workspaceSummary: String = "",
     val selectedFiles: List<ContextFile> = emptyList(),
     val memories: List<String> = emptyList(),
-    val skills: List<String> = emptyList()
+    val skills: List<String> = emptyList(),
+    val activeTaskSummary: String = "",
+    val taskSteps: List<String> = emptyList(),
+    val researchFindings: List<String> = emptyList(),
+    val browserStateSummary: String = "",
+    val artifactReferences: List<String> = emptyList(),
+    val subagentResults: List<String> = emptyList()
 )
 
 @Serializable
@@ -452,6 +470,12 @@ class ContextManager(
 
         appendSection("Active skills", snapshot.skills)
         appendSection("Relevant memory", snapshot.memories)
+        appendSection("Active task", listOf(snapshot.activeTaskSummary))
+        appendSection("Task steps", snapshot.taskSteps)
+        appendSection("Browser state", listOf(snapshot.browserStateSummary))
+        appendSection("Research findings", snapshot.researchFindings)
+        appendSection("Artifact references", snapshot.artifactReferences)
+        appendSection("Subagent results", snapshot.subagentResults)
         appendSection("Workspace summary", listOf(snapshot.workspaceSummary))
         snapshot.selectedFiles.forEach { file ->
             if (remaining <= 0) return@forEach
