@@ -2,6 +2,7 @@ package com.agentdroid.core.ai.transport
 
 import com.agentdroid.core.ai.ErrorMapper
 import com.agentdroid.core.model.AppError
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
@@ -57,11 +58,14 @@ class HttpTransport(
     }
 }
 
-fun Throwable.toAppError(): AppError = when (this) {
-    is java.net.SocketTimeoutException -> AppError.Timeout(message ?: "timeout")
-    is javax.net.ssl.SSLException -> AppError.Ssl(message ?: "ssl")
-    is IOException -> AppError.Network(message ?: "network")
-    else -> AppError.Unknown(message ?: javaClass.simpleName)
+fun Throwable.toAppError(): AppError {
+    if (this is CancellationException) throw this
+    return when (this) {
+        is java.net.SocketTimeoutException -> AppError.Timeout(message ?: "timeout")
+        is javax.net.ssl.SSLException -> AppError.Ssl(message ?: "ssl")
+        is IOException -> AppError.Network(message ?: "network")
+        else -> AppError.Unknown(message ?: javaClass.simpleName)
+    }
 }
 
 fun Response.requireSuccess(): Response = takeIf { isSuccessful } ?: run {
