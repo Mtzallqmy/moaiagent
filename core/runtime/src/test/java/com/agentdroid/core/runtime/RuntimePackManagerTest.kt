@@ -1,24 +1,23 @@
 package com.agentdroid.core.runtime
 
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RuntimePackManagerTest {
-    @Test fun `installed Node component is not executable until runtime probe succeeds`(): Unit = runBlocking {
+    @Test fun `embedded Node is not executable until runtime probe succeeds`(): Unit = runBlocking {
         val installer = object : RuntimePackInstaller {
-            override suspend fun install(manifest: RuntimePackManifest) = Result.success(
-                RuntimePackState(manifest, RuntimePackStatus.INSTALLED, installedAt = 1L, installPath = "/runtime/node", verifiedChecksum = manifest.checksum)
-            )
-            override suspend fun uninstall(state: RuntimePackState) = Result.success(Unit)
+            override suspend fun install(manifest: RuntimePackManifest) = error("embedded Node is packaged with the APK")
+            override suspend fun uninstall(state: RuntimePackState) = error("embedded Node cannot be uninstalled")
         }
-        val manager = RuntimePackManager(listOf(RuntimePackManifests.node), installer, RuntimePackExecutionVerifier { false })
+        val noProbe = RuntimePackManager(listOf(RuntimePackManifests.node), installer, RuntimePackExecutionVerifier { false })
+        val passed = RuntimePackManager(listOf(RuntimePackManifests.node), installer, RuntimePackExecutionVerifier { it.manifest.id == "node" })
 
-        val installed = manager.install("node").getOrThrow()
-
-        assertTrue(installed.state.status == RuntimePackStatus.INSTALLED)
-        assertFalse(installed.agentExecutable)
+        assertEquals(RuntimePackStatus.BUNDLED, noProbe.state("node")!!.state.status)
+        assertFalse(noProbe.state("node")!!.agentExecutable)
+        assertTrue(passed.state("node")!!.agentExecutable)
     }
 
     @Test fun `embedded Python is advertised only when execution verifier passes`(): Unit = runBlocking {
