@@ -5,18 +5,35 @@ import com.agentdroid.core.ai.providers.GeminiProvider
 import com.agentdroid.core.ai.providers.OpenAiProvider
 import com.agentdroid.core.ai.transport.HttpTransport
 import com.agentdroid.core.model.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MockWebServer
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okio.Buffer
+import okio.BufferedSource
+import okio.Source
+import okio.Timeout
+import okio.buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class ProviderResilienceTest {
@@ -54,22 +71,70 @@ class ProviderResilienceTest {
     }
 
     @Test fun `provider streaming cancellation closes open responses`(): Unit = runBlocking {
-        val factories = listOf<(MockWebServer) -> kotlinx.coroutines.flow.Flow<AiStreamEvent>>(
-            { server -> OpenAiProvider(HttpTransport()).streamChat(request, config(ProviderKind.OPENAI, server, "/v1"), "secret") },
-            { server -> AnthropicProvider(HttpTransport()).streamChat(request, config(ProviderKind.ANTHROPIC, server, "/v1"), "secret") },
-            { server -> GeminiProvider(HttpTransport()).streamChat(request, config(ProviderKind.GEMINI, server, "/v1beta"), "secret") }
+        val factories = listOf<Pair<ProviderKind, (HttpTransport) -> Flow<AiStreamEvent>>>(
+            ProviderKind.OPENAI to { transport -> OpenAiProvider(transport).streamChat(request, cancellationConfig(ProviderKind.OPENAI), "secret") },
+            ProviderKind.ANTHROPIC to { transport -> AnthropicProvider(transport).streamChat(request, cancellationConfig(ProviderKind.ANTHROPIC), "secret") },
+            ProviderKind.GEMINI to { transport -> GeminiProvider(transport).streamChat(request, cancellationConfig(ProviderKind.GEMINI), "secret") }
         )
-        factories.forEach { factory ->
-            MockWebServer().use { server ->
-                server.enqueue(MockResponse().setHeader("Content-Type", "text/event-stream").setBody("data: {}\n").setBodyDelay(10, TimeUnit.SECONDS))
-                val job = launch { factory(server).collect() }
-                delay(150)
-                withTimeout(2_000) { job.cancelAndJoin() }
-                assertTrue(job.isCancelled)
-            }
+
+        factories.forEach { (kind, factory) ->
+            val body = BlockingResponseBody()
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .header("Content-Type", "text/event-stream")
+                    .body(body)
+                    .build()
+            }.build()
+
+            val job = launch { factory(HttpTransport(client)).collect() }
+            val enteredRead = withContext(Dispatchers.IO) { body.awaitRead(2, TimeUnit.SECONDS) }
+            assertTrue("$kind stream never entered its response body", enteredRead)
+
+            withTimeout(2_000) { job.cancelAndJoin() }
+
+            assertTrue("$kind stream did not remain cancelled", job.isCancelled)
+            val closed = withContext(Dispatchers.IO) { body.awaitClosed(2, TimeUnit.SECONDS) }
+            assertTrue("$kind response body was not closed on cancellation", closed)
         }
     }
 
     private fun config(kind: ProviderKind, server: MockWebServer, basePath: String) =
         ProviderConfig("id", "test", kind, server.url(basePath).toString().trimEnd('/'), "test-model")
+
+    private fun cancellationConfig(kind: ProviderKind) = ProviderConfig(
+        id = "id",
+        name = "test",
+        kind = kind,
+        baseUrl = "https://provider.test/v1",
+        modelId = "test-model"
+    )
+
+    private class BlockingResponseBody : ResponseBody() {
+        private val readStarted = CountDownLatch(1)
+        private val closed = CountDownLatch(1)
+        private val blockingSource = object : Source {
+            override fun read(sink: Buffer, byteCount: Long): Long {
+                readStarted.countDown()
+                closed.await()
+                throw IOException("response body closed")
+            }
+
+            override fun timeout(): Timeout = Timeout.NONE
+
+            override fun close() {
+                closed.countDown()
+            }
+        }.buffer()
+
+        override fun contentType(): MediaType = "text/event-stream".toMediaType()
+        override fun contentLength(): Long = -1L
+        override fun source(): BufferedSource = blockingSource
+
+        fun awaitRead(timeout: Long, unit: TimeUnit): Boolean = readStarted.await(timeout, unit)
+        fun awaitClosed(timeout: Long, unit: TimeUnit): Boolean = closed.await(timeout, unit)
+    }
 }
