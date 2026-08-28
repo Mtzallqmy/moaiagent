@@ -21,7 +21,9 @@ interface AiProvider {
 data class ProviderTestResult(val success: Boolean, val provider: String, val modelCount: Int? = null, val latencyMs: Long? = null, val streamingSupported: Boolean = false, val error: AppError? = null)
 
 class ProviderRegistry(providers: List<AiProvider>) {
-    private val byKind = providers.associateBy { it.kind }
+    private val byKind = providers.associate { provider ->
+        provider.kind to if (provider is UsageRecordingProvider) provider else UsageRecordingProvider(provider)
+    }
     fun get(kind: ProviderKind): AiProvider? = byKind[kind]
     fun all(): List<AiProvider> = byKind.values.toList()
 }
