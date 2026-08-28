@@ -23,6 +23,9 @@ import com.agentdroid.core.browser.createBrowserAgentTools
 import com.agentdroid.core.git.GitServices
 import com.agentdroid.core.git.JGitEngine
 import com.agentdroid.core.git.createGitTools
+import com.agentdroid.core.localai.FileLocalModelManager
+import com.agentdroid.core.localai.LlamaCppEngine
+import com.agentdroid.core.localai.LocalAiProvider
 import com.agentdroid.core.permissions.PermissionEngine
 import com.agentdroid.core.permissions.PermissionRequestCoordinator
 import com.agentdroid.core.runtime.CommandPolicy
@@ -49,9 +52,11 @@ import com.agentdroid.core.tasks.InMemoryTaskRepository
 import com.agentdroid.core.tasks.TaskEngine
 import com.agentdroid.core.tasks.TaskIdGenerator
 import com.agentdroid.core.tasks.createTaskTools
+import com.agentdroid.core.model.ProviderKind
 import com.agentdroid.data.database.AgentDatabase
 import com.agentdroid.data.database.AuditRepository
 import com.agentdroid.data.database.DatabaseMigrations
+import com.agentdroid.data.database.ProviderConfigEntity
 import com.agentdroid.data.database.RoomAuditSink
 import com.agentdroid.data.database.RoomChangeSetStore
 import com.agentdroid.data.database.RoomConversationRepository
@@ -91,7 +96,20 @@ class AppContainer(context: Context) {
         .addMigrations(*DatabaseMigrations.ALL)
         .build()
     val secretStore = SecureSecretStore(appContext)
-    val providerRegistry = ProviderRegistry(buildList { add(OpenAiProvider()); add(AnthropicProvider()); add(GeminiProvider()); add(OpenRouterProvider()); add(CompatibleProvider()); if (BuildConfig.DEBUG) add(FakeAiProvider()) })
+    val localModelManager = FileLocalModelManager(
+        File(appContext.filesDir, "local-models"),
+        listOf(LlamaCppEngine())
+    )
+    val localAiProvider = LocalAiProvider(localModelManager)
+    val providerRegistry = ProviderRegistry(buildList {
+        add(OpenAiProvider())
+        add(AnthropicProvider())
+        add(GeminiProvider())
+        add(OpenRouterProvider())
+        add(CompatibleProvider())
+        add(localAiProvider)
+        if (BuildConfig.DEBUG) add(FakeAiProvider())
+    })
     val conversations = RoomConversationRepository(database.conversations(), database.messages())
     val messages = RoomMessageRepository(database.messages())
     val settings = SettingsRepository(appContext)
@@ -190,8 +208,33 @@ class AppContainer(context: Context) {
 
     init {
         applicationScope.launch {
+            ensureLocalProviderConfig()
             Phase4RecoveryCoordinator(taskPersistence, subagentEvents).recover()
             taskEngine.restore()
+        }
+    }
+
+    private suspend fun ensureLocalProviderConfig() {
+        val current = providers.get(LOCAL_PROVIDER_ID)
+        val defaultModel = localModelManager.defaultModel()?.id
+        if (current == null) {
+            providers.save(
+                ProviderConfigEntity(
+                    id = LOCAL_PROVIDER_ID,
+                    name = "Local",
+                    kind = ProviderKind.LOCAL.name,
+                    baseUrl = null,
+                    modelId = defaultModel,
+                    secretAlias = null,
+                    organizationId = null,
+                    appName = null,
+                    siteUrl = null,
+                    customHeadersJson = "{}",
+                    enabled = true
+                )
+            )
+        } else if (current.modelId == null && defaultModel != null) {
+            providers.setModel(LOCAL_PROVIDER_ID, defaultModel)
         }
     }
 
@@ -224,4 +267,6 @@ class AppContainer(context: Context) {
             uri.port, uri.path, uri.query, null
         ).toASCIIString()
     }.getOrDefault(raw.trim())
+
+    companion object { const val LOCAL_PROVIDER_ID = "local-provider" }
 }

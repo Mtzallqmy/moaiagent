@@ -8,6 +8,10 @@ class TaskEngine(
     suspend fun create(title: String, workspaceId: String, conversationId: String, summary: String, steps: List<String>): Task =
         repository.create(NewTask(title, workspaceId, conversationId, planner.create(summary, steps, clock.now())))
 
+    /** Persists a plan that has already passed an external planner's validation. */
+    suspend fun createFromPlan(title: String, workspaceId: String, conversationId: String, plan: TaskPlan): Task =
+        repository.create(NewTask(title.trim().also { require(it.isNotBlank()) }, workspaceId, conversationId, plan))
+
     suspend fun get(taskId: String, workspaceId: String): Task? = repository.get(taskId)?.takeIf { it.workspaceId == workspaceId }
 
     suspend fun list(workspaceId: String, conversationId: String? = null): List<Task> = repository.list(workspaceId, conversationId)

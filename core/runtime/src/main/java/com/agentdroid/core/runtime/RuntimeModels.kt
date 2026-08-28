@@ -133,13 +133,14 @@ data class RuntimeSnapshot(
     val go: RuntimeComponent
 )
 
+/** Detection/inventory abstraction from Phase 3. Detection alone is never runtime capability evidence. */
 interface RuntimePack {
     val id: String
     val displayName: String
     suspend fun detect(): RuntimeComponent
 }
 
-interface RuntimePackManager {
+interface RuntimeInventory {
     suspend fun list(): List<RuntimeComponent>
     suspend fun get(id: String): RuntimeComponent?
 }

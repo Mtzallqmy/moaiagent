@@ -99,6 +99,10 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
             composable("subagents") { Phase4SubagentRoute(factory) }
             composable("runtime") { RuntimeScreen(nav) }
             composable("permissions") { PermissionRulesScreen(nav, factory) }
+            composable("local_models") { Phase5LocalModelsScreen { nav.popBackStack() } }
+            composable("runtime_packs") { Phase5RuntimePacksScreen { nav.popBackStack() } }
+            composable("mcp_servers") { Phase5McpServersScreen { nav.popBackStack() } }
+            composable("storage") { Phase5StorageScreen { nav.popBackStack() } }
             composable("classic") { AgentDroidRoot() }
             composable("more") {
                 Column(Modifier.padding(20.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
@@ -106,6 +110,11 @@ private fun Phase2Navigation(factory: ContainerViewModelFactory) {
                     ListItem(headlineContent = { Text(stringResource(R.string.agent_permissions_audit)) }, leadingContent = { Icon(Icons.Default.Security, null) })
                     Button({ nav.navigate("permissions") }) { Text(stringResource(R.string.manage_permissions)) }
                     Button({ nav.navigate("runtime") }) { Icon(Icons.Default.Terminal, null); Text(stringResource(R.string.open_runtime), Modifier.padding(start = 8.dp)) }
+                    Text(stringResource(R.string.phase5_system), style = MaterialTheme.typography.titleMedium)
+                    OutlinedButton({ nav.navigate("local_models") }) { Text(stringResource(R.string.local_models)) }
+                    OutlinedButton({ nav.navigate("runtime_packs") }) { Text(stringResource(R.string.runtime_packs)) }
+                    OutlinedButton({ nav.navigate("mcp_servers") }) { Text(stringResource(R.string.mcp_servers)) }
+                    OutlinedButton({ nav.navigate("storage") }) { Text(stringResource(R.string.storage)) }
                     OutlinedButton({ nav.navigate("classic") }) { Text(stringResource(R.string.providers_memory_skills_settings)) }
                 }
             }

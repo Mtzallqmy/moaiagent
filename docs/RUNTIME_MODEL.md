@@ -39,11 +39,44 @@ Room stores process metadata only. Processes left in `STARTING`/`RUNNING` after 
 
 Android shell discovery starts with `/system/bin/sh` and falls back to other available `sh` locations. Workspace commands receive `HOME`, `PWD`, `TMPDIR`, `TERM`, `LANG`, and a `PATH` containing the inherited app path plus Android system binary directories.
 
-Phase 3 does not bundle Python, Node, Rust, or Go. `RuntimeDiscovery` detects them and reports availability/version only. The `RuntimePack`/`RuntimePackManager` interfaces reserve a stable boundary for future runtime packs without adding a downloader now.
+## Discovery is not runtime support
+
+Phase 3 did not bundle Python, Node.js, Rust, or Go. `RuntimeDiscovery` can detect `python3`, `node`, `rustc`, or `go` and report a version/path, but detection alone is not an Agent capability.
+
+Phase 5 adds `RuntimeVerifier`, which classifies evidence as:
+
+- `NOT_DETECTED`
+- `DETECTED_ONLY`
+- `EXECUTION_PROBE_PASSED`
+- `EMBEDDED_COMPONENT`
+
+A language runtime is advertised to the planner only after bounded code execution succeeds through AgentDroid's own `ProcessRunner` in the application environment. Currently the only language-runtime capability IDs the verifier can emit are:
+
+- `runtime.shell`
+- `runtime.python`
+- `runtime.node`
+
+Python is probed with a short `-c` program; Node.js is probed with a short `-e` program. Shell is probed through the Android shell. Rust and Go detection remains toolchain evidence only and never becomes `runtime.rust` or `runtime.go` without a real AgentDroid subsystem using them.
+
+A Git implementation such as embedded JGit is classified as an application component, not a language runtime.
+
+GitHub Actions host tools are not runtime evidence for the Android application. Final runtime claims require the Android instrumentation test to execute against the built application environment.
+
+## Native and optional language policy
+
+Phase 5 does not add a language merely to increase implementation count.
+
+- C/C++ is required only when a native inference backend such as llama.cpp is actually integrated through NDK/JNI and present in build artifacts.
+- Python and Node.js count as Agent runtimes only when executable from AgentDroid and verified on Android.
+- Rust counts as AgentDroid implementation language only if a real native/security subsystem is first-party Rust and linked into the product.
+- Go counts only when a real service, CLI, or runtime component is first-party Go and is actually used.
+- Lua counts only when a real plugin/skill sandbox executes Lua.
+
+Absent those integrations, these languages must be reported as absent, detected-only, or dependency-only as appropriate.
 
 ## Agent tools
 
-Phase 3 adds:
+Runtime tools include:
 
 - `run_command`
 - `start_process`

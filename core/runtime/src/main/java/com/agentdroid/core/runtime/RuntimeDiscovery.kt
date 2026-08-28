@@ -7,7 +7,7 @@ class RuntimeDiscovery(
     private val probeDirectory: File,
     private val shellPath: String = defaultShellPath(),
     private val gitFallback: (suspend () -> RuntimeComponent)? = null
-) : RuntimePackManager {
+) : RuntimeInventory {
     private val packs: List<RuntimePack> = listOf(
         ShellRuntimePack(runner, probeDirectory, shellPath),
         ExecutableRuntimePack("git", "Git", "git", listOf("--version"), runner, probeDirectory, gitFallback),
