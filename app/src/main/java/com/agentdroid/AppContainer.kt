@@ -28,6 +28,10 @@ import com.agentdroid.core.localai.LlamaCppEngine
 import com.agentdroid.core.localai.LocalAiProvider
 import com.agentdroid.core.permissions.PermissionEngine
 import com.agentdroid.core.permissions.PermissionRequestCoordinator
+import com.agentdroid.core.phone.AccessibilityPhoneAutomationEngine
+import com.agentdroid.core.phone.PhoneServices
+import com.agentdroid.core.phone.SensitiveAppPolicy
+import com.agentdroid.core.phone.createPhoneAgentTools
 import com.agentdroid.core.runtime.CommandPolicy
 import com.agentdroid.core.runtime.DefaultProcessRunner
 import com.agentdroid.core.runtime.ProcessManager
@@ -164,6 +168,8 @@ class AppContainer(context: Context) {
     val browserEngine = WebViewBrowserEngine(appContext, screenshotSink = browserScreenshotSink)
     val browserMetadata = RoomBrowserMetadataStore(database)
     val browserSessions = PersistedBrowserSessionService(browserEngine, browserMetadata, applicationScope)
+    val phoneAutomation = AccessibilityPhoneAutomationEngine(appContext)
+    val phoneServices = PhoneServices(phoneAutomation, SensitiveAppPolicy())
 
     private val fileSystems = ConcurrentHashMap<String, WorkspaceFileSystem>()
     private val changeManagers = ConcurrentHashMap<String, ChangeSetManager>()
@@ -201,6 +207,7 @@ class AppContainer(context: Context) {
         registry.registerAll(createRuntimeTools(runtimeServices))
         registry.registerAll(createGitTools(gitServices))
         registry.registerAll(createBrowserAgentTools(browserSessions))
+        registry.registerAll(createPhoneAgentTools(phoneServices))
         registry.registerAll(createTaskTools(taskEngine))
         registry.registerAll(createResearchAgentTools(researchEngine))
         registry.registerAll(createArtifactTools(ArtifactServices { artifactRepository }))
