@@ -1,0 +1,74 @@
+name: Publish Phase 5 Android Alpha
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-phase5-alpha.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified Phase 5 build evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: phase5-build-evidence
+          repository: Mtzallqmy/moaiagent
+          run-id: 33187278985
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: phase5-build
+
+      - name: Prepare installable 64-bit Android test APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find phase5-build -type f -name 'app-debug.apk' -print -quit)"
+          test -n "$APK"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/'
+          OUT="AgentDroid-phase5-alpha-64bit-android8plus.apk"
+          cp "$APK" "$OUT"
+          SHA256="$(sha256sum "$OUT" | awk '{print $1}')"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        shell: bash
+        env:
+          APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+        run: |
+          cat > release-notes.md <<EOF
+          # AgentDroid Phase 5 Alpha
+
+          First installable Android test build for hands-on Agent testing.
+
+          - Source/verification commit: d29dcef0ac3ead35cbd01fd692581bbe466b937f
+          - Published main merge: 94e3a45d35de4986b72341b402474d2f3b295c1b
+          - Verification: Phase 5 run #39 completed successfully, including unit tests, lint, APK/AAB builds and Android emulator instrumentation.
+          - Minimum Android version: Android 8.0 / API 26.
+          - 64-bit Android native support: arm64-v8a. The verified debug build also carries x86_64 native libraries for emulator/testing compatibility.
+          - Package: com.agentdroid.debug
+          - Signing: Android debug signing key. This is a test/pre-release APK, not a production-signed Play Store build.
+          - SHA-256: ${APK_SHA256}
+
+          Known Phase 5 limitations: Node.js is not yet Agent-executable; Rust/Go/Lua runtimes are not implemented; llama.cpp native packaging is verified but real GGUF performance depends on the device/model.
+          EOF
+
+      - name: Create GitHub pre-release and upload APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create phase5-alpha-1 \
+            "${{ steps.apk.outputs.path }}#AgentDroid Phase 5 Alpha APK (Android 8+, 64-bit)" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 94e3a45d35de4986b72341b402474d2f3b295c1b \
+            --title "AgentDroid Phase 5 Alpha 1" \
+            --notes-file release-notes.md \
+            --prerelease
